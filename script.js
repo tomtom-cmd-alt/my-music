@@ -1,6 +1,6 @@
 /* =============== EDIT YOUR MUSIC HERE =============== */
 const tracks = [
-  { title: "First Track",  file: "demo.wav",  note: "demo — replace me" },
+  { title: "First Track",  file: "demo.mp3",  note: "demo — replace me" },
   { title: "Second Track", file: "music/second-track.mp3", note: "" },
 ];
 

@@ -1,11 +1,84 @@
-<!DOCTYPE html lang="en-us">
-  <html>
-    <head>
-      <title>Home</title>  
-    </head>
-    <body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>git-hungry — music &amp; stems</title>
+  <meta name="description" content="Tracks, stems and downloads from git-hungry.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
 
-      <h1>Placeholder Text</h1>
-  
-    </body>
-  </html>
+<header class="site-header">
+  <a class="logo" href="#">git-<span>hungry</span></a>
+  <nav>
+    <a href="#music">music</a>
+    <a href="#stems">stems</a>
+    <a href="#about">about</a>
+    <a href="https://github.com/tomtom-cmd-alt">github ↗</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="prompt">$ whoami</p>
+    <h1>git-hungry</h1>
+    <p class="tagline">Tracks, stems &amp; experiments. Everything on this page is free to download and remix.</p>
+    <p class="hint">$ git pull origin latest-drop</p>
+  </section>
+
+  <section id="music">
+    <h2>// music</h2>
+    <p>Stream in the browser or hit the <span class="mono">↓</span> to download.</p>
+
+    <div class="player">
+      <div class="controls">
+        <button id="prev" aria-label="Previous track">⏮</button>
+        <button id="play" class="play-btn" aria-label="Play">▶</button>
+        <button id="next" aria-label="Next track">⏭</button>
+      </div>
+      <div class="player-body">
+        <div class="now-playing">
+          <span id="np-title">select a track</span>
+          <span id="np-time" class="mono">0:00 / 0:00</span>
+        </div>
+        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
+      </div>
+      <div class="volume">
+        <span aria-hidden="true">🔊</span>
+        <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume">
+      </div>
+    </div>
+
+    <ol id="tracklist" class="tracklist"></ol>
+  </section>
+
+  <section id="stems">
+    <h2>// stems</h2>
+    <p>Individual tracks per song, zipped. Remix, sample, mangle — credit required. (CC0 - Attribution Req.)</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Song</th><th>Stems</th><th>Size</th></tr>
+        </thead>
+        <tbody id="stems-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="about">
+    <h2>// about</h2>
+    <p><em>coming soon</em></p>
+    <p class="mono hint">contact: <em>coming soon</em></p>
+  </section>
+</main>
+
+<footer>
+  <span>© <span id="year"></span> Powered by GitHub — hosted on GitHub Pages</span>
+</footer>
+
+<audio id="audio" preload="metadata"></audio>
+<script src="assets/js/main.js"></script>
+</body>
+</html>

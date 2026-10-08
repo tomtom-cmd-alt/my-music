@@ -1,84 +1,163 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Thomas Miller — music &amp; stems</title>
-  <meta name="description" content="Tracks, stems and downloads from Thomas Miller.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
-  <link rel="stylesheet" href="./styles.css">
-</head>
-<body>
-
-<header class="site-header">
-  <a class="logo" href="#">git-<span>hungry</span></a>
-  <nav>
-    <a href="#music">music</a>
-    <a href="#stems">stems</a>
-    <a href="#about">about</a>
-    <a href="https://github.com/tomtom-cmd-alt">github ↗</a>
-  </nav>
-</header>
-
-<main>
-  <section class="hero">
-    <p class="prompt">$ whoami</p>
-    <h1>Thomas Miller</h1>
-    <p class="tagline">Tracks, stems &amp; experiments. Everything on this page is free to download and remix.</p>
-    <p class="hint">$ git pull origin latest-drop</p>
-  </section>
-
-  <section id="music">
-    <h2>// music</h2>
-    <p>Stream in the browser or hit the <span class="mono">↓</span> to download.</p>
-
-    <div class="player">
-      <div class="controls">
-        <button id="prev" aria-label="Previous track">⏮</button>
-        <button id="play" class="play-btn" aria-label="Play">▶</button>
-        <button id="next" aria-label="Next track">⏭</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Tracks, stems and downloads from Thomas Miller."
+    />
+    <title>Thomas Miller | Music & Stems</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="https://tomtom-cmd-alt.github.io" class="brand" aria-label="Tom Tom home">Tom Tom</a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="#music">Music</a>
+          <a href="#stems">Stems</a>
+          <a href="#about">About</a>
+          <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
+        </nav>
       </div>
-      <div class="player-body">
-        <div class="now-playing">
-          <span id="np-title">select a track</span>
-          <span id="np-time" class="mono">0:00 / 0:00</span>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Music • stems • experiments</p>
+            <h1>Tracks, loops, and downloads.</h1>
+            <p class="lead">
+              Free to stream, download, and remix. Built as a personal archive of music and source stems.
+            </p>
+
+            <div class="actions">
+              <a class="button primary" href="#music">Listen now</a>
+              <a class="button secondary" href="#about">About this page</a>
+            </div>
+
+            <ul class="mini-stats" aria-label="Key statistics">
+              <li><strong>1</strong><span>Project</span></li>
+              <li><strong>∞</strong><span>Downloads</span></li>
+            </ul>
+          </div>
+
+          <div class="hero-visual" aria-hidden="true">
+            <div class="orb orb-one"></div>
+            <div class="orb orb-two"></div>
+            <div class="card glass-card">
+              <div class="card-topline">
+                <span class="dot green"></span>
+                <span class="dot amber"></span>
+                <span class="dot red"></span>
+              </div>
+              <div class="code-window">
+                <pre><code>const track = "demo";
+const mix = "live";
+console.log("ready to play");</code></pre>
+              </div>
+            </div>
+          </div>
         </div>
-        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek">
+      </section>
+
+      <section id="music" class="section">
+        <div class="container">
+          <div class="section-heading">
+            <p class="section-kicker">Music</p>
+            <h2>Listen in-browser</h2>
+          </div>
+
+          <div class="player">
+            <div class="controls">
+              <button id="prev" aria-label="Previous track">⏮</button>
+              <button id="play" class="play-btn" aria-label="Play">▶</button>
+              <button id="next" aria-label="Next track">⏭</button>
+            </div>
+
+            <div class="player-body">
+              <div class="now-playing">
+                <span id="np-title">select a track</span>
+                <span id="np-time" class="mono">0:00 / 0:00</span>
+              </div>
+              <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
+            </div>
+
+            <div class="volume">
+              <span aria-hidden="true">🔊</span>
+              <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume" />
+            </div>
+          </div>
+
+          <ol id="tracklist" class="tracklist"></ol>
+        </div>
+      </section>
+
+      <section id="stems" class="section alt">
+        <div class="container">
+          <div class="section-heading">
+            <p class="section-kicker">Stems</p>
+            <h2>Downloadable packs</h2>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Song</th>
+                  <th>Stems</th>
+                  <th>Size</th>
+                </tr>
+              </thead>
+              <tbody id="stems-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="about" class="section">
+        <div class="container narrow">
+          <p class="section-kicker">About</p>
+          <h2>Building with sound and code.</h2>
+          <p>
+            I’m a developer and musician, creating audio experiments, song stems, and creative tools.
+            This page is meant to be a clean place to share work and let people explore the sounds directly.
+          </p>
+          <p>
+            Everything here is available for download and remix, with credit where appropriate depending on the project.
+          </p>
+          <p class="mono hint">contact: bobbyboooy7777@gmail.com</p>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact" class="site-footer">
+      <div class="container footer-wrap">
+        <div>
+          <p class="section-kicker">Contact</p>
+          <h2>Let’s build something meaningful.</h2>
+        </div>
+        <div class="socials">
+          <a href="https://github.com/tomtom-cmd" target="_blank" rel="noreferrer">GitHub - Main</a>
+          <a href="https://github.com/tomtom-cmd-alt" target="_blank" rel="noreferrer">GitHub - Alt</a>
+          <a href="mailto:bobbyboooy777@gmail.com">Email</a>
+          <a href="https://www.soundcloud.com/user-326669272" target="_blank" rel="noreferrer">Soundcloud</a>
+        </div>
       </div>
-      <div class="volume">
-        <span aria-hidden="true">🔊</span>
-        <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume">
+      <div class="container footer-bottom">
+        <p>© <span id="year"></span> Thomas Miller - GNU Generic V3</p>
       </div>
-    </div>
+    </footer>
 
-    <ol id="tracklist" class="tracklist"></ol>
-  </section>
-
-  <section id="stems">
-    <h2>// stems</h2>
-    <p>Individual tracks per song, zipped. Remix, sample, mangle — credit required. (CC0 - Attribution Req.)</p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Song</th><th>Stems</th><th>Size</th></tr>
-        </thead>
-        <tbody id="stems-body"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section id="about">
-    <h2>// about</h2>
-    <p><em>coming soon</em></p>
-    <p class="mono hint">contact: bobbyboooy7777@gmail.com</p>
-  </section>
-</main>
-
-<footer>
-  <span>© <span id="year"></span> Powered by GitHub — hosted on GitHub Pages</span>
-</footer>
-
-<audio id="audio" preload="metadata"></audio>
-<script src="./script.js"></script>
-</body>
+    <audio id="audio" preload="metadata"></audio>
+    <script src="./script.js"></script>
+  </body>
 </html>

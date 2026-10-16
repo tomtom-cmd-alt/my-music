@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Thomas Miller — music &amp; stems</title>
-  <meta name="description" content="Tracks, stems and downloads from Thomas Miller.">
+  <title>Thomas Miller — music, stems &amp; live sets</title>
+  <meta name="description" content="Tracks, stems, Ableton live sets and downloads from Thomas Miller.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -15,6 +15,7 @@
   <nav>
     <a href="#music">music</a>
     <a href="#stems">stems</a>
+    <a href="#live-sets">live sets</a>
     <a href="#about">about</a>
     <a href="https://github.com/tomtom-cmd-alt">github ↗</a>
   </nav>
@@ -56,15 +57,31 @@
 
   <section id="stems">
     <h2>// stems</h2>
-    <p>Individual tracks per song, zipped. Remix, sample, mangle — credit required. (CC0 - Attribution Req.)</p>
+    <p>Every channel bussed out of the session — remix, sample, mangle. Credit required. (CC0 — Attribution Req.)</p>
+    <p class="mono hint">16 wavs · full pack ~1.4 GB</p>
+    <a id="zip-cta" class="zip-cta" href="#">
+      <span aria-hidden="true">↓</span> download all stems (.zip)
+      <span class="zip-size">1.4 GB · 16 files</span>
+    </a>
+    <p class="note">or grab individual stems:</p>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Song</th><th>Stems</th><th>Size</th></tr>
+          <tr><th>Stem</th><th>Size</th><th></th></tr>
         </thead>
         <tbody id="stems-body"></tbody>
       </table>
     </div>
+  </section>
+
+  <section id="live-sets">
+    <h2>// live sets</h2>
+    <p>Raw Ableton Live project files (<span class="mono">.als</span>) — open, tweak, resample. Drop the file into your Live project folder; the media lives with the stems above.</p>
+    <ol id="sets-list" class="sets-list"></ol>
+    <details class="sets-backups">
+      <summary>older project backups (auto-saves)</summary>
+      <ol id="set-backups" class="sets-list backups"></ol>
+    </details>
   </section>
 
   <section id="about">

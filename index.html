@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Thomas Miller — music, stems &amp; live sets</title>
+  <title>Thomas Miller — music &amp; stems</title>
   <meta name="description" content="Tracks, stems, Ableton live sets and downloads from Thomas Miller.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
   <link rel="stylesheet" href="./styles.css">
@@ -57,13 +57,11 @@
 
   <section id="stems">
     <h2>// stems</h2>
-    <p>Every channel bussed out of the session — remix, sample, mangle. Credit required. (CC0 — Attribution Req.)</p>
-    <p class="mono hint">16 wavs · full pack ~1.4 GB</p>
-    <a id="zip-cta" class="zip-cta" href="#">
-      <span aria-hidden="true">↓</span> download all stems (.zip)
-      <span class="zip-size">1.4 GB · 16 files</span>
-    </a>
-    <p class="note">or grab individual stems:</p>
+    <p>Individual stems per song. Remix, sample, mangle — credit required. (CC0 - Attribution Req.)</p>
+    <div class="zip-bar">
+      <button id="zip-all" class="btn">↓ download all stems (.zip)</button>
+      <span id="zip-status" class="muted-note mono"></span>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -75,13 +73,17 @@
   </section>
 
   <section id="live-sets">
-    <h2>// live sets</h2>
-    <p>Raw Ableton Live project files (<span class="mono">.als</span>) — open, tweak, resample. Drop the file into your Live project folder; the media lives with the stems above.</p>
-    <ol id="sets-list" class="sets-list"></ol>
-    <details class="sets-backups">
-      <summary>older project backups (auto-saves)</summary>
-      <ol id="set-backups" class="sets-list backups"></ol>
-    </details>
+    <h2>// ableton live sets</h2>
+    <p>Every Ableton Live set for <span class="mono">Whispers</span> — the main project plus all auto-save backups, straight from the studio. Open, tweak, rebuild. Requires Ableton Live; samples live in the Drive folder.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Live Set</th><th>Size</th><th></th></tr>
+        </thead>
+        <tbody id="sets-body"></tbody>
+      </table>
+    </div>
+    <p class="hint-2 mono">full project folder: <a href="https://drive.google.com/drive/folders/1N_9eQoUQNAYc5Cf6uyjaO78Po58L5oPT?usp=sharing" target="_blank" rel="noopener">Whispers Project on Drive ↗</a></p>
   </section>
 
   <section id="about">

@@ -482,6 +482,97 @@ td a {
   font-family: var(--mono);
 }
 
+td.size {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.set-main td:first-child {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary-bright);
+  border: 1px solid var(--primary-bright);
+  border-radius: 999px;
+  vertical-align: 2px;
+}
+
+/* download-all bar */
+.zip-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem 1.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--primary-bright));
+  color: white;
+  box-shadow: 0 20px 60px rgba(139, 92, 246, 0.4);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn[disabled] {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}
+
+.muted-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.muted-note a {
+  color: var(--primary-bright);
+  font-weight: 600;
+}
+
+.section p.hint-2 {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.section p.hint-2 a {
+  color: var(--primary-bright);
+  font-weight: 600;
+}
+
+.hint-2 a:hover,
+.muted-note a:hover {
+  text-decoration: underline;
+}
+
 .hint {
   color: var(--primary-bright);
   margin-top: 1rem;

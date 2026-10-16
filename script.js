@@ -20,11 +20,14 @@ const DRIVE = (id) =>
 const STEMS_ZIP_URL =
   "https://github.com/tomtom-cmd-alt/my-music/releases/latest/download/whispers-stems.zip";
 
-// Tracks — streamed from Google Drive
+// Tracks — `file` = streaming source (self-hosted on this site: reliable,
+// range requests for seeking, no Drive quota/cookie issues).
+//          `dl`  = download link (the Google Drive original).
 const tracks = [
   {
     title: "Whispers",
-    file: DRIVE("1DXiCsa3iUBdgh1jHcy80Y199uPAPmXiy"),
+    file: "audio/Whispers.mp3",
+    dl: DRIVE("1DXiCsa3iUBdgh1jHcy80Y199uPAPmXiy"),
     note: "single — out now",
   },
 ];
@@ -106,8 +109,11 @@ function driveAnchor(id, label, title) {
   return a;
 }
 
+let usedFallbackSrc = false;
+
 function loadTrack(i, autoplay = true) {
   index = (i + tracks.length) % tracks.length;
+  usedFallbackSrc = false;
   audio.src = tracks[index].file;
   npTitle.textContent = tracks[index].title;
   renderList();
@@ -138,7 +144,7 @@ function renderList() {
 
     const dl = document.createElement("a");
     dl.className = "dl";
-    dl.href = t.file;
+    dl.href = t.dl || t.file;
     dl.download = "";
     dl.textContent = "↓";
     dl.title = "download";
@@ -177,7 +183,15 @@ audio.addEventListener("timeupdate", () => {
   if (audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
 });
 audio.addEventListener("error", () => {
-  if (tracks[index]) npTitle.textContent = tracks[index].title + " — couldn't load (file missing?)";
+  const t = tracks[index];
+  if (t && !usedFallbackSrc) {
+    // self-hosted copy failed — try the Drive original before giving up
+    usedFallbackSrc = true;
+    audio.src = t.dl || t.file;
+    audio.play().catch(() => {});
+    return;
+  }
+  if (t) npTitle.textContent = t.title + " — couldn't load (file missing?)";
 });
 
 seek.addEventListener("input", () => {

@@ -14,6 +14,12 @@ document.addEventListener("DOMContentLoaded", () => {
 const DRIVE = (id) =>
   `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
 
+// Ready-made full stems pack — hosted as a GitHub Release asset on this repo.
+// (Built from the Drive folder; browsers can't fetch+zip Drive files directly
+// because Google Drive sends no CORS headers, so we serve the zip instead.)
+const STEMS_ZIP_URL =
+  "https://github.com/tomtom-cmd-alt/my-music/releases/latest/download/whispers-stems.zip";
+
 // Tracks — streamed from Google Drive
 const tracks = [
   {
@@ -224,198 +230,25 @@ liveSets.forEach((s) => {
   setsBody.append(tr);
 });
 
-/* ==== zip-writer:start ==== */
-// Minimal streaming .zip builder (STORE method) — no external libraries.
-// Files are fetched one-by-one and appended to a Blob, so even large
-// stem packs don't need to fit in memory all at once.
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-
-function crcChunk(crc, u8) {
-  let c = ~crc;
-  for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
-  return ~c;
-}
-
-function dosDateTime() {
-  const d = new Date();
-  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
-  const date =
-    (((d.getFullYear() - 1980) & 0x7f) << 9) |
-    ((d.getMonth() + 1) << 5) |
-    d.getDate();
-  return { time, date };
-}
-
-function zipLocalHeader(nameBytes, crc, size, time, date) {
-  const buf = new Uint8Array(30 + nameBytes.length);
-  const dv = new DataView(buf.buffer);
-  dv.setUint32(0, 0x04034b50, true);
-  dv.setUint16(4, 20, true); // version needed
-  dv.setUint16(6, 0, true); // flags
-  dv.setUint16(8, 0, true); // method: store
-  dv.setUint16(10, time, true);
-  dv.setUint16(12, date, true);
-  dv.setUint32(14, crc, true);
-  dv.setUint32(18, size, true); // compressed size
-  dv.setUint32(22, size, true); // uncompressed size
-  dv.setUint16(26, nameBytes.length, true);
-  dv.setUint16(28, 0, true); // extra length
-  buf.set(nameBytes, 30);
-  return buf;
-}
-
-function zipCentralEntry(nameBytes, crc, size, offset, time, date) {
-  const buf = new Uint8Array(46 + nameBytes.length);
-  const dv = new DataView(buf.buffer);
-  dv.setUint32(0, 0x02014b50, true);
-  dv.setUint16(4, 20, true); // version made by
-  dv.setUint16(6, 20, true); // version needed
-  dv.setUint16(8, 0, true); // flags
-  dv.setUint16(10, 0, true); // method
-  dv.setUint16(12, time, true);
-  dv.setUint16(14, date, true);
-  dv.setUint32(16, crc, true);
-  dv.setUint32(20, size, true);
-  dv.setUint32(24, size, true);
-  dv.setUint16(28, nameBytes.length, true);
-  dv.setUint16(30, 0, true); // extra length
-  dv.setUint16(32, 0, true); // comment length
-  dv.setUint16(34, 0, true); // disk number
-  dv.setUint16(36, 0, true); // internal attrs
-  dv.setUint32(38, 0, true); // external attrs
-  dv.setUint32(42, offset, true); // local header offset
-  buf.set(nameBytes, 46);
-  return buf;
-}
-
-function zipEOCD(count, cdSize, cdOffset) {
-  const buf = new Uint8Array(22);
-  const dv = new DataView(buf.buffer);
-  dv.setUint32(0, 0x06054b50, true);
-  dv.setUint16(4, 0, true);
-  dv.setUint16(6, 0, true);
-  dv.setUint16(8, count, true);
-  dv.setUint16(10, count, true);
-  dv.setUint32(12, cdSize, true);
-  dv.setUint32(16, cdOffset, true);
-  dv.setUint16(20, 0, true);
-  return buf;
-}
-/* ==== zip-writer:end ==== */
-
-/* ---------- "download all stems" -> builds Whispers_Stems.zip in the browser ---------- */
+/* ---------- "download all stems" -> one-click download of the ready-made zip ---------- */
 const zipBtn = document.getElementById("zip-all");
 const zipStatus = document.getElementById("zip-status");
 const stemsTotal = stems.reduce((n, s) => n + (s.size || 0), 0);
-zipStatus.textContent = `${stems.length} stems · ${fmtSize(
+zipStatus.textContent = `16 stems · ${fmtSize(
   stemsTotal
-)} — zip is built right in your browser`;
+)} — ready-made zip hosted on GitHub Releases`;
 
-async function buildStemsZip(onProgress) {
-  const enc = new TextEncoder();
-  const { time, date } = dosDateTime();
-  const parts = [];
-  const central = [];
-  let offset = 0;
-  let fetched = 0;
-
-  for (let i = 0; i < stems.length; i++) {
-    const s = stems[i];
-    const res = await fetch(DRIVE(s.id));
-    const ctype = (res.headers.get("content-type") || "").toLowerCase();
-    if (!res.ok || ctype.includes("text/html")) {
-      throw new Error(`${s.name}: HTTP ${res.status}`);
-    }
-
-    const nameBytes = enc.encode(s.name);
-    const localOffset = offset;
-    const headerSlot = parts.length;
-    parts.push(new Uint8Array(0)); // placeholder — patched after streaming
-
-    let crc = 0,
-      size = 0;
-    if (res.body && res.body.getReader) {
-      const reader = res.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        parts.push(value);
-        crc = crcChunk(crc, value);
-        size += value.length;
-        fetched += value.length;
-        onProgress(i, s, fetched, stemsTotal);
-      }
-    } else {
-      const value = new Uint8Array(await res.arrayBuffer());
-      parts.push(value);
-      crc = crcChunk(crc, value);
-      size = value.length;
-      fetched += size;
-      onProgress(i, s, fetched, stemsTotal);
-    }
-
-    parts[headerSlot] = zipLocalHeader(nameBytes, crc >>> 0, size, time, date);
-    offset = localOffset + 30 + nameBytes.length + size;
-    central.push(
-      zipCentralEntry(nameBytes, crc >>> 0, size, localOffset, time, date)
-    );
-  }
-
-  const cdStart = offset;
-  let cdSize = 0;
-  for (const e of central) {
-    parts.push(e);
-    cdSize += e.length;
-  }
-  parts.push(zipEOCD(central.length, cdSize, cdStart));
-
-  return new Blob(parts, { type: "application/zip" });
-}
-
-zipBtn.addEventListener("click", async () => {
-  if (zipBtn.disabled) return;
-  zipBtn.disabled = true;
-  const originalLabel = zipBtn.textContent;
-  try {
-    const blob = await buildStemsZip((i, s, fetched, total) => {
-      zipBtn.textContent = `↓ zipping ${i + 1}/${stems.length}…`;
-      zipStatus.textContent = `fetching ${s.name} — ${fmtSize(fetched)} / ${fmtSize(total)}`;
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "Whispers_Stems.zip";
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    zipStatus.textContent = `done — Whispers_Stems.zip (${fmtSize(blob.size)})`;
-    zipBtn.textContent = originalLabel;
-  } catch (err) {
-    console.error("zip build failed:", err);
-    zipBtn.textContent = originalLabel;
-    zipStatus.textContent = "";
-    const msg = document.createTextNode(
-      "zip failed — grab stems individually below or open the "
-    );
-    const link = document.createElement("a");
-    link.href = stemsDriveFolder;
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    link.textContent = "Drive folder ↗";
-    zipStatus.append(msg, link);
-  } finally {
-    zipBtn.disabled = false;
-  }
+zipBtn.addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.href = STEMS_ZIP_URL;
+  a.download = "whispers-stems.zip";
+  a.rel = "noopener";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  zipStatus.textContent = `downloading whispers-stems.zip (${fmtSize(stemsTotal)}) — check your downloads bar`;
 });
+
 
 renderList();
 document.getElementById("year").textContent = new Date().getFullYear();

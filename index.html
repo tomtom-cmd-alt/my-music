@@ -98,6 +98,41 @@ console.log("ready to play");</code></pre>
             </div>
           </div>
 
+          <div class="community-panel">
+            <div class="community-stats" aria-label="Global community stats">
+              <div class="community-stat">
+                <span id="global-listens">0</span>
+                <small>Listens</small>
+              </div>
+              <div class="community-stat">
+                <span id="global-likes">0</span>
+                <small>Likes</small>
+              </div>
+              <div class="community-stat">
+                <span id="global-comments">0</span>
+                <small>Comments</small>
+              </div>
+            </div>
+
+            <div class="community-actions">
+              <button id="like-btn" class="community-btn" type="button" aria-pressed="false">
+                ♡ Like this project
+              </button>
+            </div>
+          </div>
+
+          <form id="comment-form" class="comment-form">
+            <label class="sr-only" for="comment-name">Your name</label>
+            <input id="comment-name" type="text" maxlength="24" placeholder="Your name (optional)" />
+
+            <label class="sr-only" for="comment-text">Leave a comment</label>
+            <textarea id="comment-text" rows="3" maxlength="250" placeholder="Leave a comment..." required></textarea>
+
+            <button type="submit" class="btn small-btn">Post comment</button>
+          </form>
+
+          <ul id="comment-list" class="comment-list" aria-live="polite"></ul>
+
           <ol id="tracklist" class="tracklist"></ol>
         </div>
       </section>

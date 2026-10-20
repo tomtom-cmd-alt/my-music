@@ -69,7 +69,153 @@ const list     = document.getElementById("tracklist");
 const stemsBody = document.getElementById("stems-body");
 const setsBody  = document.getElementById("sets-body");
 
+const communityStats = {
+  listens: document.getElementById("global-listens"),
+  likes: document.getElementById("global-likes"),
+  comments: document.getElementById("global-comments")
+};
+const likeBtn = document.getElementById("like-btn");
+const commentForm = document.getElementById("comment-form");
+const commentName = document.getElementById("comment-name");
+const commentText = document.getElementById("comment-text");
+const commentList = document.getElementById("comment-list");
+
+const COMMUNITY_STORAGE_KEY = "tm-music-community-v1";
+const SESSION_LISTEN_KEY = "tm-music-session-listen-v1";
+
 let index = -1;
+
+const DEFAULT_COMMUNITY = {
+  listens: 12840,
+  likes: 726,
+  comments: [
+    { id: "seed-1", author: "Ari", text: "The atmosphere on this is unreal.", createdAt: "2026-10-18T18:45:00.000Z" },
+    { id: "seed-2", author: "Mila", text: "Love the textures and mood here.", createdAt: "2026-10-19T08:15:00.000Z" }
+  ],
+  likedByCurrentUser: false
+};
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(Number(value || 0));
+}
+
+function getCommunityState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COMMUNITY_STORAGE_KEY) || "null");
+    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_COMMUNITY));
+
+    return {
+      listens: Number(raw.listens) || DEFAULT_COMMUNITY.listens,
+      likes: Number(raw.likes) || DEFAULT_COMMUNITY.likes,
+      comments: Array.isArray(raw.comments) && raw.comments.length ? raw.comments : DEFAULT_COMMUNITY.comments,
+      likedByCurrentUser: Boolean(raw.likedByCurrentUser)
+    };
+  } catch (error) {
+    return JSON.parse(JSON.stringify(DEFAULT_COMMUNITY));
+  }
+}
+
+let communityState = getCommunityState();
+
+function persistCommunityState() {
+  localStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(communityState));
+}
+
+function renderCommunityStats() {
+  communityStats.listens.textContent = formatNumber(communityState.listens);
+  communityStats.likes.textContent = formatNumber(communityState.likes);
+  communityStats.comments.textContent = formatNumber(communityState.comments.length);
+
+  likeBtn.setAttribute("aria-pressed", String(communityState.likedByCurrentUser));
+  likeBtn.textContent = communityState.likedByCurrentUser ? "♥ Liked" : "♡ Like this project";
+}
+
+function renderComments() {
+  commentList.innerHTML = "";
+
+  if (!communityState.comments.length) {
+    const empty = document.createElement("li");
+    empty.className = "comment-empty";
+    empty.textContent = "No comments yet — be the first to leave one.";
+    commentList.append(empty);
+    return;
+  }
+
+  communityState.comments.slice(0, 12).forEach((comment) => {
+    const item = document.createElement("li");
+    item.className = "comment-item";
+
+    const meta = document.createElement("div");
+    meta.className = "comment-meta";
+    const author = document.createElement("strong");
+    author.textContent = comment.author || "Anonymous";
+
+    const time = document.createElement("span");
+    time.className = "comment-time";
+    const date = new Date(comment.createdAt || Date.now());
+    time.textContent = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+    meta.append(author, time);
+
+    const text = document.createElement("p");
+    text.textContent = comment.text;
+
+    item.append(meta, text);
+    commentList.append(item);
+  });
+}
+
+function registerSessionListen() {
+  if (sessionStorage.getItem(SESSION_LISTEN_KEY)) return;
+  sessionStorage.setItem(SESSION_LISTEN_KEY, "1");
+  communityState.listens += 1;
+  persistCommunityState();
+  renderCommunityStats();
+}
+
+function registerTrackPlay() {
+  if (audio.dataset.trackPlayLogged === "true") return;
+  audio.dataset.trackPlayLogged = "true";
+  communityState.listens += 1;
+  persistCommunityState();
+  renderCommunityStats();
+}
+
+function toggleLike() {
+  communityState.likedByCurrentUser = !communityState.likedByCurrentUser;
+  if (communityState.likedByCurrentUser) {
+    communityState.likes += 1;
+  } else {
+    communityState.likes = Math.max(0, communityState.likes - 1);
+  }
+  persistCommunityState();
+  renderCommunityStats();
+}
+
+likeBtn.addEventListener("click", toggleLike);
+
+commentForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const author = (commentName.value || "Anonymous").trim().slice(0, 24) || "Anonymous";
+  const text = commentText.value.trim();
+
+  if (!text) return;
+
+  const newComment = {
+    id: `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    author,
+    text,
+    createdAt: new Date().toISOString()
+  };
+
+  communityState.comments.unshift(newComment);
+  communityState.comments = communityState.comments.slice(0, 30);
+  persistCommunityState();
+  renderComments();
+  renderCommunityStats();
+  commentForm.reset();
+});
 
 function fmt(t) {
   if (!isFinite(t)) return "0:00";
@@ -100,6 +246,7 @@ function loadTrack(i, autoplay = true) {
   index = (i + tracks.length) % tracks.length;
   usedFallbackSrc = false;
   audio.src = tracks[index].file;
+  audio.dataset.trackPlayLogged = "false";
   npTitle.textContent = tracks[index].title;
   renderList();
   if (autoplay) audio.play().catch(() => {});
@@ -148,7 +295,7 @@ playBtn.addEventListener("click", () => {
 prevBtn.addEventListener("click", () => loadTrack(index - 1));
 nextBtn.addEventListener("click", () => loadTrack(index + 1));
 
-audio.addEventListener("play",  () => { playBtn.textContent = "⏸"; renderList(); });
+audio.addEventListener("play",  () => { playBtn.textContent = "⏸"; renderList(); registerTrackPlay(); });
 audio.addEventListener("pause", () => { playBtn.textContent = "▶";  renderList(); });
 audio.addEventListener("ended", () => loadTrack(index + 1));
 audio.addEventListener("loadedmetadata", () => {
@@ -161,7 +308,6 @@ audio.addEventListener("timeupdate", () => {
 audio.addEventListener("error", () => {
   const t = tracks[index];
   if (t && !usedFallbackSrc) {
-    // self-hosted copy failed — try the Drive original before giving up
     usedFallbackSrc = true;
     audio.src = t.dl || t.file;
     audio.play().catch(() => {});
@@ -385,5 +531,8 @@ zipBtn.addEventListener("click", async () => {
   }
 });
 
+renderCommunityStats();
+renderComments();
+registerSessionListen();
 renderList();
 document.getElementById("year").textContent = new Date().getFullYear();

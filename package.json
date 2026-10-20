@@ -1,0 +1,20 @@
+{
+  "name": "my-music",
+  "version": "1.0.0",
+  "description": "Music portfolio with SQLite-backed listens and likes counters",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "music",
+    "sqlite",
+    "express"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7"
+  }
+}

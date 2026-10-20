@@ -99,29 +99,43 @@ console.log("ready to play");</code></pre>
           </div>
 
           <div class="community-panel">
-            <div class="community-stats" aria-label="Global community stats">
+            <div class="community-head">
+              <div class="community-title">
+                <p class="section-kicker">Track stats</p>
+                <h3 id="community-song">Whispers</h3>
+              </div>
+              <span id="api-mode" class="api-mode" title="Where listens, likes and comments are stored">
+                <span class="mode-dot"></span>
+                <span id="api-mode-text">checking&hellip;</span>
+              </span>
+            </div>
+
+            <div class="community-stats" aria-label="Per-track community stats">
               <div class="community-stat">
-                <span id="global-listens">0</span>
+                <span id="song-listens">0</span>
                 <small>Listens</small>
               </div>
               <div class="community-stat">
-                <span id="global-likes">0</span>
+                <span id="song-likes">0</span>
                 <small>Likes</small>
               </div>
               <div class="community-stat">
-                <span id="global-comments">0</span>
+                <span id="song-comments">0</span>
                 <small>Comments</small>
               </div>
             </div>
 
             <div class="community-actions">
               <button id="like-btn" class="community-btn" type="button" aria-pressed="false">
-                ♡ Like this project
+                ♡ Like this track
               </button>
             </div>
           </div>
 
           <form id="comment-form" class="comment-form">
+            <p class="comment-target">
+              commenting on <strong id="comment-song">Whispers</strong>
+            </p>
             <label class="sr-only" for="comment-name">Your name</label>
             <input id="comment-name" type="text" maxlength="24" placeholder="Your name (optional)" />
 
@@ -235,6 +249,7 @@ console.log("ready to play");</code></pre>
           <a href="https://github.com/tomtom-cmd-alt" target="_blank" rel="noreferrer">GitHub - Alt</a>
           <a href="mailto:bobbyboooy777@gmail.com">Email</a>
           <a href="https://www.soundcloud.com/user-326669272" target="_blank" rel="noreferrer">Soundcloud</a>
+          <a href="./admin.html">Admin</a>
         </div>
       </div>
       <div class="container footer-bottom">
@@ -243,6 +258,8 @@ console.log("ready to play");</code></pre>
     </footer>
 
     <audio id="audio" preload="metadata"></audio>
+    <script src="./config.js"></script>
+    <script src="./api.js"></script>
     <script src="./script.js"></script>
   </body>
 </html>

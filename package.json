@@ -1,7 +1,7 @@
 {
   "name": "my-music",
-  "version": "1.0.0",
-  "description": "Music portfolio with SQLite-backed listens and likes counters",
+  "version": "2.0.0",
+  "description": "Music portfolio: per-song listens/likes counters, comment moderation admin panel, SQLite-backed API for GitHub Pages",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,11 +10,18 @@
   "keywords": [
     "music",
     "sqlite",
-    "express"
+    "express",
+    "github-pages",
+    "admin"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^4.19.2"
+  },
+  "optionalDependencies": {
     "sqlite3": "^5.1.7"
   }
 }

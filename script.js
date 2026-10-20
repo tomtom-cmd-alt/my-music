@@ -62,11 +62,15 @@ const list = document.getElementById("tracklist");
 const stemsBody = document.getElementById("stems-body");
 const setsBody = document.getElementById("sets-body");
 
-const communityStats = {
-  listens: document.getElementById("global-listens"),
-  likes: document.getElementById("global-likes"),
-  comments: document.getElementById("global-comments")
-};
+/* ---- per-song community state (listens / likes / comments) ---- */
+
+const communitySong = document.getElementById("community-song");
+const songListensEl = document.getElementById("song-listens");
+const songLikesEl = document.getElementById("song-likes");
+const songCommentsEl = document.getElementById("song-comments");
+const apiModeEl = document.getElementById("api-mode");
+const apiModeTextEl = document.getElementById("api-mode-text");
+const commentSongEl = document.getElementById("comment-song");
 
 const likeBtn = document.getElementById("like-btn");
 const commentForm = document.getElementById("comment-form");
@@ -74,23 +78,91 @@ const commentName = document.getElementById("comment-name");
 const commentText = document.getElementById("comment-text");
 const commentList = document.getElementById("comment-list");
 
-const COMMUNITY_STORAGE_KEY = "tm-music-community-v1";
+const LIKED_STORAGE_KEY = "tm-music-likes-v1";
+const LOCAL_DB_KEY = "tm-music-localdb-v2";
 const SESSION_LISTEN_KEY = "tm-music-session-listen-v1";
-const COMMENT_LIMIT = 12;
+const COMMENT_LIMIT = 20;
 
 let index = -1;
 let currentSong = "whispers";
-let likedByCurrentUser = false;
+let currentComments = [];
+let allStats = {}; // song -> { listens, likes, comments }
 
-const DEFAULT_COMMUNITY = {
-  listens: 10,
-  likes: 7,
-  comments: [
-    { id: "seed-1", author: "Ari", text: "The atmosphere on this is unreal.", createdAt: "2026-10-18T18:45:00.000Z" },
-    { id: "seed-2", author: "Mila", text: "Love the textures and mood here.", createdAt: "2026-10-19T08:15:00.000Z" }
-  ],
-  likedByCurrentUser: false
-};
+/* ---- localStorage fallback (used only when no backend is reachable) ---- */
+
+function readJson(key, fallback) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || "null");
+    return raw && typeof raw === "object" ? raw : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function localDb() {
+  const db = readJson(LOCAL_DB_KEY, null);
+  if (db && db.songs) return db;
+  return { songs: {} };
+}
+
+function localSong(song) {
+  const db = localDb();
+  if (!db.songs[song]) db.songs[song] = { listens: 0, likes: 0, comments: [] };
+  return db;
+}
+
+function localSaveSong(song, data) {
+  const db = localSong(song);
+  db.songs[song] = data;
+  try { localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(db)); } catch (_) {}
+}
+
+function localGetSong(song) {
+  const db = localSong(song);
+  const s = db.songs[song];
+  return {
+    listens: Number(s.listens) || 0,
+    likes: Number(s.likes) || 0,
+    comments: Array.isArray(s.comments) ? s.comments.slice() : []
+  };
+}
+
+function localListen(song) {
+  const s = localGetSong(song);
+  s.listens += 1;
+  localSaveSong(song, s);
+  return s;
+}
+
+function localLike(song, wantLike) {
+  const s = localGetSong(song);
+  s.likes = Math.max(0, s.likes + (wantLike ? 1 : -1));
+  localSaveSong(song, s);
+  return s;
+}
+
+function localAddComment(song, comment) {
+  const s = localGetSong(song);
+  s.comments.unshift(comment);
+  s.comments = s.comments.slice(0, 100);
+  localSaveSong(song, s);
+  return s;
+}
+
+function getLikedMap() {
+  return readJson(LIKED_STORAGE_KEY, {});
+}
+
+function isLiked(song) {
+  return Boolean(getLikedMap()[song]);
+}
+
+function setLiked(song, value) {
+  const map = getLikedMap();
+  if (value) map[song] = true;
+  else delete map[song];
+  try { localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(map)); } catch (_) {}
+}
 
 function normalizeSongName(title) {
   return String(title || "whispers")
@@ -104,41 +176,46 @@ function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(Number(value || 0));
 }
 
-function getCommunityState() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(COMMUNITY_STORAGE_KEY) || "null");
-    if (!raw) return JSON.parse(JSON.stringify(DEFAULT_COMMUNITY));
+function statsFor(song) {
+  if (allStats[song]) return allStats[song];
+  if (MusicAPI.mode === "local") return localGetSong(song);
+  return { listens: 0, likes: 0, comments: 0 };
+}
 
-    return {
-      listens: Number(raw.listens) || DEFAULT_COMMUNITY.listens,
-      likes: Number(raw.likes) || DEFAULT_COMMUNITY.likes,
-      comments: Array.isArray(raw.comments) && raw.comments.length ? raw.comments : DEFAULT_COMMUNITY.comments,
-      likedByCurrentUser: Boolean(raw.likedByCurrentUser)
-    };
-  } catch (error) {
-    return JSON.parse(JSON.stringify(DEFAULT_COMMUNITY));
+function renderApiMode() {
+  if (!apiModeEl) return;
+  if (MusicAPI.mode === "server") {
+    apiModeEl.classList.remove("local");
+    apiModeEl.classList.add("live");
+    apiModeEl.title = "Saved to the live database — visible to every visitor" + (MusicAPI.base ? ` (${MusicAPI.base})` : "");
+    apiModeTextEl.textContent = "live database";
+  } else {
+    apiModeEl.classList.remove("live");
+    apiModeEl.classList.add("local");
+    apiModeEl.title = "No backend configured — data is saved on this device only. Set apiBase in config.js to go global.";
+    apiModeTextEl.textContent = "saved on this device";
   }
 }
 
-let communityState = getCommunityState();
-
-function persistCommunityState() {
-  localStorage.setItem(COMMUNITY_STORAGE_KEY, JSON.stringify(communityState));
-}
-
 function renderCommunityStats() {
-  communityStats.listens.textContent = formatNumber(communityState.listens);
-  communityStats.likes.textContent = formatNumber(communityState.likes);
-  communityStats.comments.textContent = formatNumber(communityState.comments.length);
+  const track = tracks[index] || tracks.find((t) => normalizeSongName(t.title) === currentSong);
+  const stats = statsFor(currentSong);
+  communitySong.textContent = track ? track.title : currentSong;
+  commentSongEl.textContent = track ? track.title : currentSong;
 
-  likeBtn.setAttribute("aria-pressed", String(communityState.likedByCurrentUser));
-  likeBtn.textContent = communityState.likedByCurrentUser ? "♥ Liked" : "♡ Like this project";
+  songListensEl.textContent = formatNumber(stats.listens);
+  songLikesEl.textContent = formatNumber(stats.likes);
+  songCommentsEl.textContent = formatNumber(Math.max(stats.comments, currentComments.length));
+
+  const liked = isLiked(currentSong);
+  likeBtn.setAttribute("aria-pressed", String(liked));
+  likeBtn.textContent = liked ? "♥ Liked this track" : "♡ Like this track";
 }
 
 function renderComments() {
   commentList.innerHTML = "";
 
-  if (!communityState.comments.length) {
+  if (!currentComments.length) {
     const empty = document.createElement("li");
     empty.className = "comment-empty";
     empty.textContent = "No comments yet — be the first to leave one.";
@@ -146,9 +223,10 @@ function renderComments() {
     return;
   }
 
-  communityState.comments.slice(0, COMMENT_LIMIT).forEach((comment) => {
+  currentComments.slice(0, COMMENT_LIMIT).forEach((comment) => {
     const item = document.createElement("li");
     item.className = "comment-item";
+    item.dataset.id = comment.id || "";
 
     const meta = document.createElement("div");
     meta.className = "comment-meta";
@@ -158,7 +236,7 @@ function renderComments() {
 
     const time = document.createElement("span");
     time.className = "comment-time";
-    const date = new Date(comment.createdAt || Date.now());
+    const date = new Date(comment.created_at || comment.createdAt || Date.now());
     time.textContent = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
     meta.append(author, time);
@@ -171,21 +249,62 @@ function renderComments() {
   });
 }
 
-async function loadStatsFromDb() {
+/* ---- data refresh (server first, localStorage fallback) ---- */
+
+async function refreshAllStats() {
+  try {
+    const data = await MusicAPI.all();
+    allStats = {};
+    data.songs.forEach((s) => {
+      allStats[s.song] = { listens: s.listens, likes: s.likes, comments: s.comments };
+    });
+  } catch (_) {
+    allStats = {};
+  }
+  renderCommunityStats();
+  renderList();
+}
+
+async function refreshCurrentStats() {
+  const song = currentSong;
+  try {
+    const data = await MusicAPI.stats(song);
+    if (song !== currentSong) return;
+    allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
+  } catch (_) {
+    if (MusicAPI.mode === "local") {
+      allStats[song] = localGetSong(song);
+    }
+  }
+  renderCommunityStats();
+  renderList();
+}
+
+async function loadComments() {
   const song = currentSong;
 
   try {
-    const res = await fetch(`/api/stats?song=${encodeURIComponent(song)}`);
-    if (!res.ok) throw new Error("stats request failed");
-    const data = await res.json();
-
-    communityState.listens = Number(data.listens || 0);
-    communityState.likes = Number(data.likes || 0);
-    renderCommunityStats();
-  } catch (error) {
-    console.warn("Falling back to local stats", error);
-    renderCommunityStats();
+    const data = await MusicAPI.comments(song, 50);
+    if (song !== currentSong) return;
+    currentComments = data.comments.map((c) => ({
+      id: c.id,
+      author: c.author,
+      text: c.text,
+      created_at: c.created_at
+    }));
+  } catch (_) {
+    if (MusicAPI.mode === "local") {
+      currentComments = localGetSong(song).comments;
+    } else {
+      currentComments = [];
+    }
   }
+  renderCommunityStats();
+  renderComments();
+}
+
+function loadStatsFromDb() {
+  return refreshCurrentStats();
 }
 
 async function registerListen() {
@@ -195,77 +314,82 @@ async function registerListen() {
   sessionStorage.setItem(`${SESSION_LISTEN_KEY}:${song}`, "1");
 
   try {
-    const res = await fetch("/api/listen", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ song })
-    });
-
-    if (!res.ok) throw new Error("listen request failed");
-    const data = await res.json();
-    communityState.listens = Number(data.listens || 0);
-    renderCommunityStats();
-  } catch (error) {
-    console.warn("Listen could not be saved to the database", error);
-    communityState.listens += 1;
-    persistCommunityState();
-    renderCommunityStats();
+    const data = await MusicAPI.listen(song);
+    allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
+  } catch (_) {
+    const s = localListen(song);
+    allStats[song] = s;
   }
+  renderCommunityStats();
+  renderList();
 }
 
 async function toggleLike() {
-  if (communityState.likedByCurrentUser) {
-    communityState.likedByCurrentUser = false;
-    renderCommunityStats();
-    return;
-  }
-
-  communityState.likedByCurrentUser = true;
+  const song = currentSong;
+  const wantLike = !isLiked(song);
+  setLiked(song, wantLike);
 
   try {
-    const res = await fetch("/api/like", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ song: currentSong })
-    });
-
-    if (!res.ok) throw new Error("like request failed");
-    const data = await res.json();
-    communityState.likes = Number(data.likes || 0);
-  } catch (error) {
-    console.warn("Like could not be saved to the database", error);
-    communityState.likes += 1;
+    const data = await MusicAPI.like(song, wantLike);
+    allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
+  } catch (_) {
+    const s = localLike(song, wantLike);
+    allStats[song] = s;
   }
-
-  persistCommunityState();
   renderCommunityStats();
+  renderList();
 }
 
 likeBtn.addEventListener("click", () => {
   toggleLike();
 });
 
-commentForm.addEventListener("submit", (event) => {
+commentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const author = (commentName.value || "Anonymous").trim().slice(0, 24) || "Anonymous";
   const text = commentText.value.trim();
+  const song = currentSong;
 
   if (!text) return;
 
-  const newComment = {
-    id: `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    author,
-    text,
-    createdAt: new Date().toISOString()
-  };
+  const submitBtn = commentForm.querySelector("button[type=submit]");
+  submitBtn.disabled = true;
 
-  communityState.comments.unshift(newComment);
-  communityState.comments = communityState.comments.slice(0, 30);
-  persistCommunityState();
-  renderComments();
-  renderCommunityStats();
+  let posted = false;
+
+  try {
+    const data = await MusicAPI.addComment({ song, author, text });
+    if (data.comment && data.comment.status === "approved") {
+      currentComments.unshift({
+        id: data.comment.id,
+        author: data.comment.author,
+        text: data.comment.text,
+        created_at: data.comment.created_at
+      });
+      posted = true;
+    }
+    allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
+  } catch (_) {
+    const localComment = {
+      id: `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      author,
+      text,
+      created_at: new Date().toISOString()
+    };
+    localAddComment(song, localComment);
+    currentComments.unshift(localComment);
+    posted = true;
+  }
+
+  submitBtn.disabled = false;
   commentForm.reset();
+
+  if (posted) {
+    renderComments();
+    renderCommunityStats();
+    renderList();
+  }
 });
 
 function fmt(seconds) {
@@ -302,8 +426,12 @@ function loadTrack(i, autoplay = true) {
   audio.src = nextTrack.file;
   audio.dataset.trackPlayLogged = "false";
   npTitle.textContent = nextTrack.title;
+  currentComments = [];
+  renderComments();
+  renderCommunityStats();
   renderList();
   loadStatsFromDb();
+  loadComments();
   if (autoplay) audio.play().catch(() => {});
 }
 
@@ -327,6 +455,16 @@ function renderList() {
       note.className = "note";
       note.textContent = t.note;
       li.append(note);
+    }
+
+    const songKey = normalizeSongName(t.title);
+    const s = allStats[songKey];
+    if (s) {
+      const rowStats = document.createElement("span");
+      rowStats.className = "row-stats mono";
+      rowStats.title = `${s.listens} listens · ${s.likes} likes`;
+      rowStats.textContent = `▶ ${formatNumber(s.listens)} · ♥ ${formatNumber(s.likes)}`;
+      li.append(rowStats);
     }
 
     const dl = document.createElement("a");
@@ -609,8 +747,24 @@ zipBtn.addEventListener("click", async () => {
   }
 });
 
+/* ---- init ---- */
+
 renderCommunityStats();
 renderComments();
-loadStatsFromDb();
 renderList();
 document.getElementById("year").textContent = new Date().getFullYear();
+
+MusicAPI.onChange(() => {
+  renderApiMode();
+  refreshAllStats();
+  refreshCurrentStats();
+  loadComments();
+});
+
+MusicAPI.detect().then(({ mode }) => {
+  renderApiMode();
+  refreshAllStats();
+  refreshCurrentStats();
+  loadComments();
+  console.info(`[music] storage mode: ${mode}${mode === "server" ? ` (${MusicAPI.base || "same origin"})` : " (localStorage fallback)"}`);
+});

@@ -50,6 +50,8 @@ const liveSets = [
 
 const stemsDriveFolder = "https://drive.google.com/drive/folders/1gfPI2GZnWvpsMAediP_zaGx_Oy4JrJnH";
 
+/* =============== element refs =============== */
+
 const audio = document.getElementById("audio");
 const playBtn = document.getElementById("play");
 const prevBtn = document.getElementById("prev");
@@ -58,9 +60,15 @@ const seek = document.getElementById("seek");
 const vol = document.getElementById("volume");
 const npTitle = document.getElementById("np-title");
 const npTime = document.getElementById("np-time");
+const npCover = document.getElementById("np-cover");
+const npDescription = document.getElementById("np-description");
+const npSourceBadge = document.getElementById("np-source-badge");
+const coverFallback = document.getElementById("cover-fallback");
 const list = document.getElementById("tracklist");
 const stemsBody = document.getElementById("stems-body");
 const setsBody = document.getElementById("sets-body");
+const heroVinyl = document.getElementById("hero-vinyl");
+const heroSongCount = document.getElementById("hero-song-count");
 
 /* ---- per-song community state (listens / likes / comments) ---- */
 
@@ -78,17 +86,61 @@ const commentName = document.getElementById("comment-name");
 const commentText = document.getElementById("comment-text");
 const commentList = document.getElementById("comment-list");
 
+/* ---- account refs ---- */
+
+const signinBtn = document.getElementById("signin-btn");
+const userChip = document.getElementById("user-chip");
+const userAvatar = document.getElementById("user-avatar");
+const userNameEl = document.getElementById("user-name");
+const signoutBtn = document.getElementById("signout-btn");
+const authModal = document.getElementById("auth-modal");
+const authClose = document.getElementById("auth-close");
+const authError = document.getElementById("auth-error");
+const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+const loginUsername = document.getElementById("login-username");
+const loginPassword = document.getElementById("login-password");
+const regUsername = document.getElementById("reg-username");
+const regPassword = document.getElementById("reg-password");
+
 const LIKED_STORAGE_KEY = "tm-music-likes-v1";
 const LOCAL_DB_KEY = "tm-music-localdb-v2";
 const SESSION_LISTEN_KEY = "tm-music-session-listen-v1";
+const ACCOUNT_KEY = "tm-music-account-v2";
 const COMMENT_LIMIT = 20;
 
 let index = -1;
 let currentSong = "whispers";
 let currentComments = [];
-let allStats = {}; // song -> { listens, likes, comments }
+let allStats = {};          // song -> { listens, likes, comments }
+let dynamicSongs = [];      // songs from the backend (metadata: description, covers, audio)
+let viewTracks = [];        // merged static + dynamic track list
+let banToastShown = false;  // avoid spamming the ban notice
 
-/* ---- localStorage fallback (used only when no backend is reachable) ---- */
+/* =============== toasts =============== */
+
+function showToast(message, type = "info", ms = 4200) {
+  const root = document.getElementById("toast-root");
+  if (!root) return;
+  const el = document.createElement("div");
+  el.className = `toast toast-${type}`;
+  el.textContent = message;
+  root.append(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 350);
+  }, ms);
+}
+
+function announceBanIfAny(error) {
+  if (error && error.banned && !banToastShown) {
+    banToastShown = true;
+    showToast(error.message, "error", 9000);
+  }
+}
+
+/* =============== account state =============== */
 
 function readJson(key, fallback) {
   try {
@@ -98,6 +150,64 @@ function readJson(key, fallback) {
     return fallback;
   }
 }
+
+let account = readJson(ACCOUNT_KEY, null); // { token, id, username }
+let likedFromAccount = new Set();
+
+function saveAccount(value) {
+  account = value;
+  try {
+    if (value) localStorage.setItem(ACCOUNT_KEY, JSON.stringify(value));
+    else localStorage.removeItem(ACCOUNT_KEY);
+  } catch (_) {}
+}
+
+function initialsFor(name) {
+  return (String(name || "?").trim()[0] || "?").toUpperCase();
+}
+
+function hueFor(str) {
+  let h = 0;
+  for (let i = 0; i < String(str).length; i++) h = (h * 31 + String(str).charCodeAt(i)) % 360;
+  return h;
+}
+
+function updateAuthUI() {
+  if (account) {
+    signinBtn.hidden = true;
+    userChip.hidden = false;
+    userNameEl.textContent = account.username;
+    userAvatar.textContent = initialsFor(account.username);
+    userAvatar.style.background = `linear-gradient(135deg, hsl(${hueFor(account.username)} 70% 45%), hsl(${(hueFor(account.username) + 60) % 360} 70% 55%))`;
+    commentName.hidden = true;
+    commentName.value = "";
+  } else {
+    signinBtn.hidden = false;
+    userChip.hidden = true;
+    commentName.hidden = false;
+  }
+}
+
+async function restoreAccount() {
+  if (!account) return;
+  if (MusicAPI.mode !== "server") return;
+  try {
+    const data = await MusicAPI.me(account.token);
+    account = { token: account.token, id: data.user.id, username: data.user.username };
+    saveAccount(account);
+    likedFromAccount = new Set(data.likes || []);
+    if (data.user.banned) {
+      const when = data.user.banned.permanent ? "permanently" : "until " + new Date(data.user.banned.until).toLocaleString();
+      showToast(`Your account is banned ${when} — ${data.user.banned.reason}`, "error", 9000);
+    }
+  } catch (error) {
+    if (error.status === 401) saveAccount(null);
+  }
+  updateAuthUI();
+  refreshCurrentStats();
+}
+
+/* =============== localStorage fallback (no backend) =============== */
 
 function localDb() {
   const db = readJson(LOCAL_DB_KEY, null);
@@ -154,26 +264,99 @@ function getLikedMap() {
 }
 
 function isLiked(song) {
+  if (account) return likedFromAccount.has(song);
   return Boolean(getLikedMap()[song]);
 }
 
 function setLiked(song, value) {
+  if (account) return; // server-side for accounts
   const map = getLikedMap();
   if (value) map[song] = true;
   else delete map[song];
   try { localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(map)); } catch (_) {}
 }
 
+/* =============== track catalog (static + server-added) =============== */
+
 function normalizeSongName(title) {
-  return String(title || "whispers")
+  return String(title || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "whispers";
+    .replace(/^-+|-+$/g, "");
 }
 
 function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(Number(value || 0));
+}
+
+function hashString(str) {
+  let h = 5381;
+  for (let i = 0; i < String(str).length; i++) h = ((h << 5) + h + String(str).charCodeAt(i)) >>> 0;
+  return h;
+}
+
+// Procedural SVG cover — gradient + rings + initials, unique per song.
+function proceduralCover(songKey, title) {
+  const h = hashString(songKey || title || "x");
+  const hue1 = h % 360;
+  const hue2 = (hue1 + 70 + (h % 90)) % 360;
+  const initials = (String(title || songKey || "?").trim()
+    .split(/\s+/).slice(0, 2).map((w) => w[0]).join("") || "?").toUpperCase();
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="hsl(${hue1},72%,52%)"/>` +
+    `<stop offset="1" stop-color="hsl(${hue2},80%,38%)"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="320" height="320" fill="url(#g)"/>` +
+    `<circle cx="320" cy="0" r="150" fill="rgba(255,255,255,0.10)"/>` +
+    `<circle cx="0" cy="320" r="110" fill="rgba(0,0,0,0.16)"/>` +
+    `<circle cx="160" cy="160" r="86" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="3"/>` +
+    `<circle cx="160" cy="160" r="64" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="2"/>` +
+    `<text x="160" y="184" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800" ` +
+    `fill="rgba(255,255,255,0.92)" text-anchor="middle">${initials}</text>` +
+    `</svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+function coverFor(track) {
+  if (track && track.cover_url) return MusicAPI.mediaUrl(track.cover_url);
+  return proceduralCover(track ? track.songKey : "", track ? track.title : "");
+}
+
+function rebuildViewTracks() {
+  const dynByKey = new Map(dynamicSongs.map((s) => [s.song, s]));
+  const merged = tracks.map((t) => {
+    const key = normalizeSongName(t.title);
+    const d = dynByKey.get(key);
+    return {
+      ...t,
+      songKey: key,
+      description: d ? d.description || "" : "",
+      cover_url: d ? d.cover_url : null,
+      audio_url: d ? d.audio_url : null,
+      adminAdded: false
+    };
+  });
+
+  for (const d of dynamicSongs) {
+    if (merged.some((t) => t.songKey === d.song)) continue;
+    merged.push({
+      title: d.display_name,
+      file: d.audio_url ? MusicAPI.mediaUrl(d.audio_url) : "",
+      dl: d.audio_url ? MusicAPI.mediaUrl(d.audio_url) : "",
+      note: "added via admin",
+      songKey: d.song,
+      description: d.description || "",
+      cover_url: d.cover_url,
+      audio_url: d.audio_url,
+      adminAdded: true
+    });
+  }
+
+  viewTracks = merged;
+  if (heroSongCount) heroSongCount.textContent = String(merged.length);
 }
 
 function statsFor(song) {
@@ -181,6 +364,8 @@ function statsFor(song) {
   if (MusicAPI.mode === "local") return localGetSong(song);
   return { listens: 0, likes: 0, comments: 0 };
 }
+
+/* =============== rendering =============== */
 
 function renderApiMode() {
   if (!apiModeEl) return;
@@ -198,7 +383,7 @@ function renderApiMode() {
 }
 
 function renderCommunityStats() {
-  const track = tracks[index] || tracks.find((t) => normalizeSongName(t.title) === currentSong);
+  const track = viewTracks[index] || viewTracks.find((t) => t.songKey === currentSong);
   const stats = statsFor(currentSong);
   communitySong.textContent = track ? track.title : currentSong;
   commentSongEl.textContent = track ? track.title : currentSong;
@@ -209,7 +394,31 @@ function renderCommunityStats() {
 
   const liked = isLiked(currentSong);
   likeBtn.setAttribute("aria-pressed", String(liked));
-  likeBtn.textContent = liked ? "♥ Liked this track" : "♡ Like this track";
+  likeBtn.textContent = liked ? "♥" : "♡";
+  likeBtn.title = liked ? "Liked — click to unlike" : "Like this track";
+
+  // player artwork + description
+  if (track) {
+    npCover.src = coverFor(track);
+    npCover.onerror = () => { npCover.src = proceduralCover(track.songKey, track.title); };
+    coverFallback.style.display = "none";
+    npSourceBadge.hidden = !track.adminAdded;
+    if (track.description) {
+      npDescription.textContent = track.description;
+      npDescription.hidden = false;
+    } else {
+      npDescription.hidden = true;
+    }
+  }
+}
+
+function avatarEl(name, isAccount) {
+  const span = document.createElement("span");
+  span.className = "avatar avatar-small";
+  span.textContent = initialsFor(name);
+  span.style.background = `linear-gradient(135deg, hsl(${hueFor(name)} 70% 45%), hsl(${(hueFor(name) + 60) % 360} 70% 55%))`;
+  if (isAccount) span.title = "posted with an account";
+  return span;
 }
 
 function renderComments() {
@@ -231,15 +440,28 @@ function renderComments() {
     const meta = document.createElement("div");
     meta.className = "comment-meta";
 
+    const who = document.createElement("div");
+    who.className = "comment-who";
+    who.append(avatarEl(comment.author, Boolean(comment.user_id)));
+
     const author = document.createElement("strong");
     author.textContent = comment.author || "Anonymous";
+    who.append(author);
+
+    if (comment.user_id) {
+      const acct = document.createElement("span");
+      acct.className = "acct-badge";
+      acct.title = "posted from a member account";
+      acct.textContent = "member";
+      who.append(acct);
+    }
 
     const time = document.createElement("span");
     time.className = "comment-time";
     const date = new Date(comment.created_at || comment.createdAt || Date.now());
     time.textContent = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-    meta.append(author, time);
+    meta.append(who, time);
 
     const text = document.createElement("p");
     text.textContent = comment.text;
@@ -249,18 +471,27 @@ function renderComments() {
   });
 }
 
-/* ---- data refresh (server first, localStorage fallback) ---- */
+/* =============== data refresh =============== */
 
 async function refreshAllStats() {
   try {
     const data = await MusicAPI.all();
     allStats = {};
+    dynamicSongs = data.songs.map((s) => ({
+      song: s.song,
+      display_name: s.display_name,
+      description: s.description,
+      cover_url: s.cover_url,
+      audio_url: s.audio_url,
+      source: s.source
+    }));
     data.songs.forEach((s) => {
       allStats[s.song] = { listens: s.listens, likes: s.likes, comments: s.comments };
     });
   } catch (_) {
     allStats = {};
   }
+  rebuildViewTracks();
   renderCommunityStats();
   renderList();
 }
@@ -290,7 +521,8 @@ async function loadComments() {
       id: c.id,
       author: c.author,
       text: c.text,
-      created_at: c.created_at
+      created_at: c.created_at,
+      user_id: c.user_id
     }));
   } catch (_) {
     if (MusicAPI.mode === "local") {
@@ -316,7 +548,8 @@ async function registerListen() {
   try {
     const data = await MusicAPI.listen(song);
     allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
-  } catch (_) {
+  } catch (error) {
+    announceBanIfAny(error);
     const s = localListen(song);
     allStats[song] = s;
   }
@@ -330,11 +563,24 @@ async function toggleLike() {
   setLiked(song, wantLike);
 
   try {
-    const data = await MusicAPI.like(song, wantLike);
+    const data = await MusicAPI.like(song, wantLike, account ? account.token : undefined);
     allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
-  } catch (_) {
-    const s = localLike(song, wantLike);
-    allStats[song] = s;
+    if (account) {
+      if (wantLike) likedFromAccount.add(song);
+      else likedFromAccount.delete(song);
+    }
+  } catch (error) {
+    if (error.status === 409) {
+      // account already-liked / not-liked — resync
+      showToast(error.message, "info");
+      if (account) {
+        wantLike ? likedFromAccount.add(song) : likedFromAccount.delete(song);
+      }
+    } else {
+      announceBanIfAny(error);
+      const s = localLike(song, wantLike);
+      allStats[song] = s;
+    }
   }
   renderCommunityStats();
   renderList();
@@ -347,7 +593,7 @@ likeBtn.addEventListener("click", () => {
 commentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const author = (commentName.value || "Anonymous").trim().slice(0, 24) || "Anonymous";
+  const author = account ? account.username : ((commentName.value || "Anonymous").trim().slice(0, 24) || "Anonymous");
   const text = commentText.value.trim();
   const song = currentSong;
 
@@ -359,27 +605,37 @@ commentForm.addEventListener("submit", async (event) => {
   let posted = false;
 
   try {
-    const data = await MusicAPI.addComment({ song, author, text });
+    const data = await MusicAPI.addComment({ song, author, text }, account ? account.token : undefined);
     if (data.comment && data.comment.status === "approved") {
       currentComments.unshift({
         id: data.comment.id,
         author: data.comment.author,
         text: data.comment.text,
-        created_at: data.comment.created_at
+        created_at: data.comment.created_at,
+        user_id: data.comment.user_id
       });
       posted = true;
+    } else if (data.comment) {
+      showToast("Comment received — waiting for moderator approval.", "info");
     }
     allStats[song] = { listens: data.listens, likes: data.likes, comments: data.comments };
-  } catch (_) {
-    const localComment = {
-      id: `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      author,
-      text,
-      created_at: new Date().toISOString()
-    };
-    localAddComment(song, localComment);
-    currentComments.unshift(localComment);
-    posted = true;
+  } catch (error) {
+    announceBanIfAny(error);
+    if (error.banned) {
+      showToast("You are banned — comment not sent.", "error");
+    } else if (MusicAPI.mode === "local") {
+      const localComment = {
+        id: `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        author,
+        text,
+        created_at: new Date().toISOString()
+      };
+      localAddComment(song, localComment);
+      currentComments.unshift(localComment);
+      posted = true;
+    } else {
+      showToast("Could not post: " + error.message, "error");
+    }
   }
 
   submitBtn.disabled = false;
@@ -391,6 +647,8 @@ commentForm.addEventListener("submit", async (event) => {
     renderList();
   }
 });
+
+/* =============== player =============== */
 
 function fmt(seconds) {
   if (!isFinite(seconds)) return "0:00";
@@ -418,12 +676,18 @@ function driveAnchor(id, label, title) {
 
 let usedFallbackSrc = false;
 
+function setPlayingVisual(playing) {
+  document.body.classList.toggle("is-playing", Boolean(playing));
+  if (heroVinyl) heroVinyl.classList.toggle("spinning", Boolean(playing));
+}
+
 function loadTrack(i, autoplay = true) {
-  index = (i + tracks.length) % tracks.length;
+  if (!viewTracks.length) rebuildViewTracks();
+  index = (i + viewTracks.length) % viewTracks.length;
   usedFallbackSrc = false;
-  const nextTrack = tracks[index];
-  currentSong = normalizeSongName(nextTrack.title);
-  audio.src = nextTrack.file;
+  const nextTrack = viewTracks[index];
+  currentSong = nextTrack.songKey || normalizeSongName(nextTrack.title);
+  audio.src = nextTrack.file || nextTrack.dl || "";
   audio.dataset.trackPlayLogged = "false";
   npTitle.textContent = nextTrack.title;
   currentComments = [];
@@ -437,18 +701,37 @@ function loadTrack(i, autoplay = true) {
 
 function renderList() {
   list.innerHTML = "";
-  tracks.forEach((t, i) => {
+  viewTracks.forEach((t, i) => {
     const li = document.createElement("li");
     if (i === index) li.className = "active";
+
+    const thumb = document.createElement("img");
+    thumb.className = "row-cover";
+    thumb.src = coverFor(t);
+    thumb.alt = "";
+    thumb.loading = "lazy";
+    thumb.onerror = () => { thumb.src = proceduralCover(t.songKey, t.title); };
+    li.append(thumb);
 
     const num = document.createElement("span");
     num.className = "num";
     num.textContent = i === index ? "▶" : String(i + 1).padStart(2, "0");
 
+    const titleWrap = document.createElement("span");
+    titleWrap.className = "title-wrap";
+
     const title = document.createElement("span");
     title.className = "title";
     title.textContent = t.title;
-    li.append(num, title);
+    titleWrap.append(title);
+
+    if (t.description) {
+      const desc = document.createElement("span");
+      desc.className = "row-desc";
+      desc.textContent = t.description.length > 64 ? t.description.slice(0, 64) + "…" : t.description;
+      titleWrap.append(desc);
+    }
+    li.append(num, titleWrap);
 
     if (t.note) {
       const note = document.createElement("span");
@@ -457,8 +740,7 @@ function renderList() {
       li.append(note);
     }
 
-    const songKey = normalizeSongName(t.title);
-    const s = allStats[songKey];
+    const s = allStats[t.songKey];
     if (s) {
       const rowStats = document.createElement("span");
       rowStats.className = "row-stats mono";
@@ -473,6 +755,7 @@ function renderList() {
     dl.download = "";
     dl.textContent = "↓";
     dl.title = "download";
+    if (!t.dl && !t.file) dl.style.display = "none";
     dl.addEventListener("click", (event) => event.stopPropagation());
     li.append(dl);
 
@@ -491,12 +774,14 @@ nextBtn.addEventListener("click", () => loadTrack(index + 1));
 
 audio.addEventListener("play", () => {
   playBtn.textContent = "⏸";
+  setPlayingVisual(true);
   renderList();
   registerListen();
 });
 
 audio.addEventListener("pause", () => {
   playBtn.textContent = "▶";
+  setPlayingVisual(false);
   renderList();
 });
 
@@ -506,12 +791,16 @@ audio.addEventListener("loadedmetadata", () => {
 });
 audio.addEventListener("timeupdate", () => {
   npTime.textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
-  if (audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
+  if (audio.duration) {
+    const pct = (audio.currentTime / audio.duration) * 100;
+    seek.value = (audio.currentTime / audio.duration) * 1000;
+    seek.style.setProperty("--p", pct + "%");
+  }
 });
 
 audio.addEventListener("error", () => {
-  const track = tracks[index];
-  if (track && !usedFallbackSrc) {
+  const track = viewTracks[index];
+  if (track && !usedFallbackSrc && (track.dl || track.file)) {
     usedFallbackSrc = true;
     audio.src = track.dl || track.file;
     audio.play().catch(() => {});
@@ -527,6 +816,102 @@ seek.addEventListener("input", () => {
 vol.addEventListener("input", () => {
   audio.volume = vol.value / 100;
 });
+
+/* =============== account modal =============== */
+
+function openAuthModal() {
+  if (MusicAPI.mode !== "server") {
+    showToast("Accounts need the database backend — set apiBase in config.js.", "info", 6000);
+    return;
+  }
+  authError.hidden = true;
+  authModal.hidden = false;
+  setTimeout(() => loginUsername.focus(), 60);
+}
+
+function closeAuthModal() {
+  authModal.hidden = true;
+}
+
+signinBtn.addEventListener("click", openAuthModal);
+authClose.addEventListener("click", closeAuthModal);
+authModal.addEventListener("click", (event) => {
+  if (event.target === authModal) closeAuthModal();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !authModal.hidden) closeAuthModal();
+});
+
+document.querySelectorAll(".modal-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".modal-tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const which = tab.dataset.authTab;
+    loginForm.hidden = which !== "login";
+    registerForm.hidden = which !== "register";
+    authError.hidden = true;
+  });
+});
+
+function authFail(message) {
+  authError.textContent = message;
+  authError.hidden = false;
+}
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  authError.hidden = true;
+  const btn = loginForm.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const data = await MusicAPI.login(loginUsername.value.trim(), loginPassword.value);
+    account = { token: data.token, id: data.user.id, username: data.user.username };
+    saveAccount(account);
+    loginForm.reset();
+    closeAuthModal();
+    updateAuthUI();
+    showToast(`Welcome back, ${account.username}!`, "success");
+    await restoreAccount();
+  } catch (error) {
+    authFail(error.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+registerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  authError.hidden = true;
+  const btn = registerForm.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const data = await MusicAPI.register(regUsername.value.trim(), regPassword.value);
+    account = { token: data.token, id: data.user.id, username: data.user.username };
+    saveAccount(account);
+    registerForm.reset();
+    closeAuthModal();
+    updateAuthUI();
+    showToast(`Account created — welcome, ${account.username}!`, "success");
+  } catch (error) {
+    authFail(error.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+signoutBtn.addEventListener("click", async () => {
+  const wasAccount = account;
+  saveAccount(null);
+  likedFromAccount = new Set();
+  updateAuthUI();
+  renderCommunityStats();
+  if (wasAccount && MusicAPI.mode === "server") {
+    try { await MusicAPI.logout(wasAccount.token); } catch (_) {}
+  }
+  showToast("Signed out.", "info");
+});
+
+/* =============== stems & live sets tables =============== */
 
 stems.forEach((stem) => {
   const tr = document.createElement("tr");
@@ -749,9 +1134,11 @@ zipBtn.addEventListener("click", async () => {
 
 /* ---- init ---- */
 
+rebuildViewTracks();
 renderCommunityStats();
 renderComments();
 renderList();
+updateAuthUI();
 document.getElementById("year").textContent = new Date().getFullYear();
 
 MusicAPI.onChange(() => {
@@ -759,12 +1146,15 @@ MusicAPI.onChange(() => {
   refreshAllStats();
   refreshCurrentStats();
   loadComments();
+  restoreAccount();
 });
 
 MusicAPI.detect().then(({ mode }) => {
   renderApiMode();
   refreshAllStats();
-  refreshCurrentStats();
-  loadComments();
+  restoreAccount().then(() => {
+    refreshCurrentStats();
+    loadComments();
+  });
   console.info(`[music] storage mode: ${mode}${mode === "server" ? ` (${MusicAPI.base || "same origin"})` : " (localStorage fallback)"}`);
 });

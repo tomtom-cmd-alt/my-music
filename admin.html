@@ -8,15 +8,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob blob-a"></div>
+      <div class="aurora-blob blob-b"></div>
+      <div class="aurora-blob blob-c"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
     <header class="site-header">
       <div class="container nav-wrap">
-        <a href="./index.html" class="brand" aria-label="Back to the music page">Tom Tom</a>
+        <a href="./index.html" class="brand" aria-label="Back to the music page">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
         <nav class="main-nav" aria-label="Admin navigation">
           <a href="./index.html#music">Music</a>
           <a href="./index.html#stems">Stems</a>
@@ -30,28 +37,33 @@
         <!-- ================= login ================= -->
         <div id="login-view" class="glass-card admin-card">
           <p class="section-kicker">Admin panel</p>
-          <h1>Comment moderation &amp; counters</h1>
+          <h1>Moderation &amp; site control</h1>
           <p class="muted-note">
-            Enter the admin password of the Node backend. It comes from the
-            <span class="mono">ADMIN_PASSWORD</span> environment variable — if the server
-            was started without one, a generated password is printed in the server console
-            (and saved to <span class="mono">data/admin-password.txt</span>).
+            Sign in with GitHub (admin accounts only) or with the server's admin
+            password from <span class="mono">ADMIN_PASSWORD</span>.
           </p>
 
-          <form id="login-form" class="comment-form" autocomplete="off">
+          <button id="github-btn" class="gh-btn" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+            Sign in with GitHub
+          </button>
+          <p id="gh-hint" class="gh-hint muted-note mono" hidden></p>
+
+          <div id="pw-divider" class="auth-divider">or password</div>
+
+          <form id="login-form" class="auth-form" autocomplete="off">
             <label class="sr-only" for="admin-password">Admin password</label>
             <input
               id="admin-password"
               type="password"
               placeholder="Admin password"
               autocomplete="current-password"
-              required
             />
-            <button type="submit" class="small-btn" id="login-btn">Sign in</button>
+            <button type="submit" class="btn small-btn" id="login-btn">Sign in</button>
             <p id="login-error" class="admin-error" hidden></p>
           </form>
 
-          <p id="api-status" class="muted-note mono"></p>
+          <p id="api-status" class="muted-note mono" style="margin-top: 1rem"></p>
         </div>
 
         <!-- ================= dashboard ================= -->
@@ -67,16 +79,22 @@
             </div>
           </div>
 
+          <div id="stat-cards" class="stat-cards"></div>
+
           <div class="admin-tabs" role="tablist">
             <button class="admin-tab active" data-tab="comments" type="button">
               Comments <span id="tab-comment-count" class="tab-count mono"></span>
             </button>
-            <button class="admin-tab" data-tab="songs" type="button">
-              Songs &amp; counters
+            <button class="admin-tab" data-tab="songs" type="button">Songs</button>
+            <button class="admin-tab" data-tab="users" type="button">
+              Users <span id="tab-user-count" class="tab-count mono"></span>
+            </button>
+            <button class="admin-tab" data-tab="bans" type="button">
+              Bans <span id="tab-ban-count" class="tab-count mono"></span>
             </button>
           </div>
 
-          <!-- comments tab -->
+          <!-- ============ comments tab ============ -->
           <section id="tab-comments" class="admin-tab-panel">
             <div class="admin-filters">
               <label>
@@ -97,24 +115,90 @@
             <ul id="admin-comments" class="comment-list admin-comment-list"></ul>
           </section>
 
-          <!-- songs tab -->
+          <!-- ============ songs tab ============ -->
           <section id="tab-songs" class="admin-tab-panel" hidden>
+            <form id="add-song-form" class="add-song-form">
+              <h3>➕ Add a new song</h3>
+              <div>
+                <span class="field-label">Title *</span>
+                <input id="new-song-title" type="text" maxlength="80" placeholder="e.g. Midnight Drive" required />
+              </div>
+              <div>
+                <span class="field-label">Description (shown on the player, like SoundCloud)</span>
+                <textarea id="new-song-description" maxlength="2000" placeholder="Tell listeners about this track — mood, gear, story..."></textarea>
+              </div>
+              <div class="song-file-row">
+                <label class="file-label">🎵 Audio file (mp3/wav/ogg)
+                  <input id="new-song-audio" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a" />
+                </label>
+                <label class="file-label">🖼️ Cover art (png/jpg/webp)
+                  <input id="new-song-cover" type="file" accept="image/*" />
+                </label>
+              </div>
+              <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap">
+                <button type="submit" class="btn small-btn" id="add-song-btn">Add song</button>
+                <span id="add-song-status" class="muted-note mono"></span>
+              </div>
+              <p class="muted-note" style="margin: 0; font-size: 0.78rem">
+                Audio is optional at first (the track will appear in the list but won't play
+                until you upload its file). Files upload straight to the server's
+                <span class="mono">/uploads</span> folder.
+              </p>
+            </form>
+
+            <div id="songs-grid" class="songs-grid"></div>
+          </section>
+
+          <!-- ============ users tab ============ -->
+          <section id="tab-users" class="admin-tab-panel" hidden>
             <p class="muted-note">
-              Live counters per track. Use <em>Adjust</em> to correct a value
-              (e.g. after testing or spam) — it writes straight to the database.
+              Every account on the site. Banning kicks them out instantly and blocks
+              comments, likes and listens — for the number of hours you set, or
+              permanently when hours is empty / 0.
             </p>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Track</th>
-                    <th>Listens</th>
-                    <th>Likes</th>
-                    <th>Comments</th>
-                    <th>Adjust counters</th>
+                    <th>Account</th>
+                    <th>Joined</th>
+                    <th>Activity</th>
+                    <th>Ban / timeout</th>
                   </tr>
                 </thead>
-                <tbody id="songs-body"></tbody>
+                <tbody id="users-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ bans tab ============ -->
+          <section id="tab-bans" class="admin-tab-panel" hidden>
+            <form id="add-ban-form" class="add-song-form">
+              <h3>🚫 Ban an IP address</h3>
+              <div class="ban-controls" style="flex-wrap: wrap">
+                <input id="ban-value" type="text" placeholder="IP address e.g. 203.0.113.7" />
+                <input id="ban-hours" type="number" min="0" step="0.5" placeholder="hours (0 = forever)" />
+                <input id="ban-reason" type="text" placeholder="reason (shown to them)" style="width: 220px" />
+                <button type="submit" class="admin-btn danger" id="add-ban-btn">Ban IP</button>
+              </div>
+              <p class="muted-note" style="margin: 0; font-size: 0.78rem">
+                IP bans block comments, likes, listens and account creation from that address.
+                Account bans live in the Users tab (or use the Ban buttons on any comment).
+              </p>
+            </form>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Target</th>
+                    <th>Reason</th>
+                    <th>Expires</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="bans-body"></tbody>
               </table>
             </div>
           </section>
@@ -127,6 +211,8 @@
         <p>Admin — <a class="admin-link" href="./index.html">back to the music page</a></p>
       </div>
     </footer>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
 
     <script src="./config.js"></script>
     <script src="./api.js"></script>

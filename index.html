@@ -15,15 +15,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob blob-a"></div>
+      <div class="aurora-blob blob-b"></div>
+      <div class="aurora-blob blob-c"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
     <header class="site-header">
       <div class="container nav-wrap">
-        <a href="https://tomtom-cmd-alt.github.io" class="brand" aria-label="Tom Tom home">Tom Tom</a>
+        <a href="https://tomtom-cmd-alt.github.io" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
         <nav class="main-nav" aria-label="Main navigation">
           <a href="#music">Music</a>
           <a href="#stems">Stems</a>
@@ -31,6 +38,14 @@
           <a href="#about">About</a>
           <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
         </nav>
+        <div class="auth-area" id="auth-area">
+          <button id="signin-btn" class="auth-btn" type="button">Sign in</button>
+          <div id="user-chip" class="user-chip" hidden>
+            <span id="user-avatar" class="avatar" aria-hidden="true"></span>
+            <span id="user-name" class="user-name"></span>
+            <button id="signout-btn" class="auth-out" type="button" title="Sign out">⏻</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -39,7 +54,7 @@
         <div class="container hero-grid">
           <div class="hero-copy">
             <p class="eyebrow">Music • stems • experiments</p>
-            <h1>Tracks, loops, and downloads.</h1>
+            <h1>Tracks, loops, and <span class="grad-text">downloads.</span></h1>
             <p class="lead">
               Free to stream, download, and remix. Built as a personal archive of music and source stems.
             </p>
@@ -52,22 +67,32 @@
             <ul class="mini-stats" aria-label="Key statistics">
               <li><strong>16</strong><span>Stems</span></li>
               <li><strong>11</strong><span>Live sets</span></li>
+              <li><strong id="hero-song-count">10</strong><span>Tracks</span></li>
             </ul>
           </div>
 
           <div class="hero-visual" aria-hidden="true">
             <div class="orb orb-one"></div>
             <div class="orb orb-two"></div>
-            <div class="card glass-card">
+            <div class="glass-card hero-card">
               <div class="card-topline">
                 <span class="dot green"></span>
                 <span class="dot amber"></span>
                 <span class="dot red"></span>
+                <span class="card-title mono">now spinning</span>
               </div>
-              <div class="code-window">
-                <pre><code>const track = "demo";
-const mix = "live";
-console.log("ready to play");</code></pre>
+              <div class="vinyl-stage">
+                <div class="vinyl" id="hero-vinyl">
+                  <div class="vinyl-grooves"></div>
+                  <div class="vinyl-label"></div>
+                  <div class="vinyl-hole"></div>
+                </div>
+                <div class="tonearm"></div>
+              </div>
+              <div class="eq" id="hero-eq">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span>
               </div>
             </div>
           </div>
@@ -81,58 +106,55 @@ console.log("ready to play");</code></pre>
             <h2>Listen in-browser</h2>
           </div>
 
-          <div class="player">
-            <div class="controls">
-              <button id="prev" aria-label="Previous track">⏮</button>
-              <button id="play" class="play-btn" aria-label="Play">▶</button>
-              <button id="next" aria-label="Next track">⏭</button>
-            </div>
-
-            <div class="player-body">
-              <div class="now-playing">
-                <span id="np-title">select a track</span>
-                <span id="np-time" class="mono">0:00 / 0:00</span>
+          <div class="player" id="player-card">
+            <div class="player-main">
+              <div class="cover-wrap">
+                <img id="np-cover" class="np-cover" alt="" aria-hidden="true" />
+                <div class="cover-fallback" id="cover-fallback" aria-hidden="true"></div>
+                <div class="eq on-cover" id="np-eq">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
               </div>
-              <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
+
+              <div class="player-body">
+                <div class="now-playing">
+                  <div class="np-line">
+                    <span id="np-title">select a track</span>
+                    <span class="np-badge mono" id="np-source-badge" hidden>new</span>
+                  </div>
+                  <span id="np-time" class="mono">0:00 / 0:00</span>
+                </div>
+
+                <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
+
+                <p id="np-description" class="np-description" hidden></p>
+
+                <div class="player-meta">
+                  <div class="controls">
+                    <button id="prev" aria-label="Previous track">⏮</button>
+                    <button id="play" class="play-btn" aria-label="Play">▶</button>
+                    <button id="next" aria-label="Next track">⏭</button>
+                    <button id="like-btn" class="like-btn" type="button" aria-pressed="false" title="Like this track">♡</button>
+                  </div>
+                  <div class="community-stats" aria-label="Per-track community stats">
+                    <div class="community-stat"><span id="song-listens">0</span><small>plays</small></div>
+                    <div class="community-stat"><span id="song-likes">0</span><small>likes</small></div>
+                    <div class="community-stat"><span id="song-comments">0</span><small>comments</small></div>
+                  </div>
+                  <div class="volume">
+                    <span aria-hidden="true">🔊</span>
+                    <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume" />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div class="volume">
-              <span aria-hidden="true">🔊</span>
-              <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume" />
-            </div>
-          </div>
-
-          <div class="community-panel">
             <div class="community-head">
-              <div class="community-title">
-                <p class="section-kicker">Track stats</p>
-                <h3 id="community-song">Whispers</h3>
-              </div>
               <span id="api-mode" class="api-mode" title="Where listens, likes and comments are stored">
                 <span class="mode-dot"></span>
                 <span id="api-mode-text">checking&hellip;</span>
               </span>
-            </div>
-
-            <div class="community-stats" aria-label="Per-track community stats">
-              <div class="community-stat">
-                <span id="song-listens">0</span>
-                <small>Listens</small>
-              </div>
-              <div class="community-stat">
-                <span id="song-likes">0</span>
-                <small>Likes</small>
-              </div>
-              <div class="community-stat">
-                <span id="song-comments">0</span>
-                <small>Comments</small>
-              </div>
-            </div>
-
-            <div class="community-actions">
-              <button id="like-btn" class="community-btn" type="button" aria-pressed="false">
-                ♡ Like this track
-              </button>
+              <span class="community-title mono" id="community-song">Whispers</span>
             </div>
           </div>
 
@@ -260,6 +282,41 @@ console.log("ready to play");</code></pre>
         <p>© <span id="year"></span> Thomas Miller - GNU Generic V3</p>
       </div>
     </footer>
+
+    <!-- ================= account modal ================= -->
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-label="Account">
+        <button id="auth-close" class="modal-close" type="button" aria-label="Close">×</button>
+        <div class="modal-tabs" role="tablist">
+          <button class="modal-tab active" data-auth-tab="login" type="button">Sign in</button>
+          <button class="modal-tab" data-auth-tab="register" type="button">Create account</button>
+        </div>
+
+        <form id="login-form" class="auth-form" autocomplete="off">
+          <label class="sr-only" for="login-username">Username</label>
+          <input id="login-username" type="text" placeholder="Username" maxlength="20" required />
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" class="btn small-btn">Sign in</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden autocomplete="off">
+          <label class="sr-only" for="reg-username">Username</label>
+          <input id="reg-username" type="text" placeholder="Username (3-20 chars)" maxlength="20" required />
+          <label class="sr-only" for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="Password (6+ chars)" autocomplete="new-password" required />
+          <button type="submit" class="btn small-btn">Create account</button>
+        </form>
+
+        <p class="auth-note muted-note">
+          An account saves your likes across devices, attaches your name to
+          comments, and unlocks your stats everywhere.
+        </p>
+        <p id="auth-error" class="admin-error" hidden></p>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
 
     <audio id="audio" preload="metadata"></audio>
     <script src="./config.js"></script>

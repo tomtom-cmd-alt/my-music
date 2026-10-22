@@ -1,7 +1,7 @@
 {
   "name": "my-music",
-  "version": "2.0.0",
-  "description": "Music portfolio: per-song listens/likes counters, comment moderation admin panel, SQLite-backed API for GitHub Pages",
+  "version": "3.0.0",
+  "description": "Music portfolio: accounts, bans, song library with covers/descriptions, GitHub-OAuth admin panel, SQLite-backed API for GitHub Pages",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,6 +12,7 @@
     "sqlite",
     "express",
     "github-pages",
+    "github-oauth",
     "admin"
   ],
   "license": "MIT",
@@ -19,7 +20,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "multer": "^2.0.2"
   },
   "optionalDependencies": {
     "sqlite3": "^5.1.7"

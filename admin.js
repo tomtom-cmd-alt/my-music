@@ -1,6 +1,6 @@
-/* Admin panel — comment moderation + counter management.
- * Talks to the Node backend (same origin, or the URL from config.js).
- * If no backend is reachable, the panel explains what to set up. */
+/* Admin panel v3 — GitHub-OAuth + password login, comment moderation,
+ * song library (add/edit/delete with uploads), user management and
+ * global bans. Talks to the Node backend (same origin or config.js apiBase). */
 
 const loginView = document.getElementById("login-view");
 const dashView = document.getElementById("dash-view");
@@ -11,27 +11,65 @@ const loginBtn = document.getElementById("login-btn");
 const apiStatus = document.getElementById("api-status");
 const adminState = document.getElementById("admin-state");
 
+const githubBtn = document.getElementById("github-btn");
+const ghHint = document.getElementById("gh-hint");
+const pwDivider = document.getElementById("pw-divider");
+
 const refreshBtn = document.getElementById("refresh-btn");
 const logoutBtn = document.getElementById("logout-btn");
+const statCards = document.getElementById("stat-cards");
 
 const tabs = Array.from(document.querySelectorAll(".admin-tab"));
 const tabComments = document.getElementById("tab-comments");
 const tabSongs = document.getElementById("tab-songs");
+const tabUsers = document.getElementById("tab-users");
+const tabBans = document.getElementById("tab-bans");
 
 const filterSong = document.getElementById("filter-song");
 const filterStatus = document.getElementById("filter-status");
 const commentsShown = document.getElementById("comments-shown");
 const adminComments = document.getElementById("admin-comments");
-const songsBody = document.getElementById("songs-body");
 const tabCommentCount = document.getElementById("tab-comment-count");
+const tabUserCount = document.getElementById("tab-user-count");
+const tabBanCount = document.getElementById("tab-ban-count");
+
+const songsGrid = document.getElementById("songs-grid");
+const addSongForm = document.getElementById("add-song-form");
+const newSongTitle = document.getElementById("new-song-title");
+const newSongDescription = document.getElementById("new-song-description");
+const newSongAudio = document.getElementById("new-song-audio");
+const newSongCover = document.getElementById("new-song-cover");
+const addSongBtn = document.getElementById("add-song-btn");
+const addSongStatus = document.getElementById("add-song-status");
+
+const usersBody = document.getElementById("users-body");
+const bansBody = document.getElementById("bans-body");
+const addBanForm = document.getElementById("add-ban-form");
+const banValue = document.getElementById("ban-value");
+const banHours = document.getElementById("ban-hours");
+const banReason = document.getElementById("ban-reason");
 
 const TOKEN_KEY = "tm-music-admin-token-v1";
 let token = sessionStorage.getItem(TOKEN_KEY) || "";
-let overview = null; // { songs, comments }
+let overview = null;
 let songFilter = "";
 let statusFilter = "";
 
 /* ---------------- helpers ---------------- */
+
+function showToast(message, type = "info", ms = 4200) {
+  const root = document.getElementById("toast-root");
+  if (!root) return;
+  const el = document.createElement("div");
+  el.className = `toast toast-${type}`;
+  el.textContent = message;
+  root.append(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 350);
+  }, ms);
+}
 
 function showLogin(message) {
   token = "";
@@ -45,11 +83,11 @@ function showLogin(message) {
   }
 }
 
-function showDash() {
+function showDash(via) {
   loginView.hidden = true;
   dashView.hidden = false;
   adminState.hidden = false;
-  adminState.textContent = "signed in";
+  adminState.textContent = via === "github" ? "signed in · github" : "signed in";
 }
 
 function fmtDate(iso) {
@@ -57,6 +95,14 @@ function fmtDate(iso) {
   if (isNaN(d)) return "";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
     " · " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtExpiry(ms) {
+  if (!ms) return "permanent";
+  const d = new Date(Number(ms));
+  const days = (Number(ms) - Date.now()) / 86400000;
+  const left = days >= 1 ? `${Math.floor(days)}d left` : `${Math.max(1, Math.floor((Number(ms) - Date.now()) / 3600000))}h left`;
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${left}`;
 }
 
 function fmtNumber(value) {
@@ -68,6 +114,92 @@ function displayName(songKey) {
   const row = overview.songs.find((s) => s.song === songKey);
   return row ? row.display_name : songKey;
 }
+
+function initialsFor(name) {
+  return (String(name || "?").trim()[0] || "?").toUpperCase();
+}
+
+function hueFor(str) {
+  let h = 0;
+  for (let i = 0; i < String(str).length; i++) h = (h * 31 + String(str).charCodeAt(i)) % 360;
+  return h;
+}
+
+function avatarFor(name) {
+  const span = document.createElement("span");
+  span.className = "avatar avatar-small";
+  span.textContent = initialsFor(name);
+  span.style.background = `linear-gradient(135deg, hsl(${hueFor(name)} 70% 45%), hsl(${(hueFor(name) + 60) % 360} 70% 55%))`;
+  return span;
+}
+
+function askBanParams() {
+  const hoursRaw = window.prompt("Ban for how many hours? (leave empty or 0 for permanent)", "24");
+  if (hoursRaw === null) return null;
+  const reason = window.prompt("Reason (shown to the banned user):", "rule violation");
+  if (reason === null) return null;
+  const hours = String(hoursRaw).trim() === "" || Number(hoursRaw) === 0 ? null : Number(hoursRaw);
+  return { hours, reason: reason || "no reason given" };
+}
+
+/* ---------------- GitHub OAuth ---------------- */
+
+function handleGithubParams() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get("gh");
+  const ghError = params.get("gh_error");
+
+  if (ghError) {
+    history.replaceState(null, "", location.pathname);
+    showLogin("GitHub sign-in failed: " + ghError);
+    return true;
+  }
+
+  if (code) {
+    history.replaceState(null, "", location.pathname);
+    MusicAPI.githubExchange(code)
+      .then((data) => {
+        token = data.token;
+        sessionStorage.setItem(TOKEN_KEY, token);
+        showDash("github");
+        showToast("Signed in with GitHub 🎉", "success");
+        loadOverview();
+      })
+      .catch((error) => showLogin("GitHub sign-in failed: " + error.message));
+    return true;
+  }
+  return false;
+}
+
+async function loadAuthConfig() {
+  try {
+    const config = await MusicAPI.adminAuthConfig();
+    if (config.github_enabled) {
+      githubBtn.hidden = false;
+      githubBtn.disabled = false;
+      ghHint.hidden = false;
+      ghHint.textContent = "admins: " + (config.allowed_admins || []).join(", ");
+    } else {
+      githubBtn.hidden = true;
+      ghHint.hidden = false;
+      ghHint.textContent = "github sign-in not configured — set GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET on the server";
+    }
+    if (config.password_login === false) {
+      loginForm.hidden = true;
+      pwDivider.hidden = true;
+    }
+  } catch (_) {
+    githubBtn.hidden = true;
+  }
+}
+
+githubBtn.addEventListener("click", () => {
+  try {
+    MusicAPI.githubSignIn();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+});
 
 /* ---------------- data ---------------- */
 
@@ -93,22 +225,50 @@ async function loadOverview() {
 function renderAll() {
   if (!overview) return;
 
-  // song filter options
   const selected = filterSong.value;
   filterSong.innerHTML = '<option value="">All tracks</option>' +
-    overview.songs.map((s) =>
-      `<option value="${s.song}">${s.display_name}</option>`
-    ).join("");
+    overview.songs.map((s) => `<option value="${s.song}">${s.display_name}</option>`).join("");
   filterSong.value = selected;
 
-  tabCommentCount.textContent = overview.comments.length ? String(overview.comments.length) : "";
+  renderStats();
   renderCommentsAdmin();
   renderSongsAdmin();
+  renderUsersAdmin();
+  renderBansAdmin();
+
+  tabCommentCount.textContent = overview.comments.length ? String(overview.comments.length) : "";
+  tabUserCount.textContent = overview.users.length ? String(overview.users.length) : "";
+  tabBanCount.textContent = overview.bans.length ? String(overview.bans.length) : "";
   commentsShown.textContent = `${visibleComments().length} of ${overview.comments.length} shown`;
 }
 
+function renderStats() {
+  const t = overview.totals || {};
+  const cards = [
+    { value: fmtNumber(t.listens), label: "total listens" },
+    { value: fmtNumber(t.likes), label: "total likes" },
+    { value: fmtNumber(t.comments), label: "visible comments" },
+    { value: fmtNumber(t.users), label: "accounts" },
+    { value: fmtNumber(t.bans), label: "active bans" },
+    { value: fmtNumber(overview.songs.length), label: "tracks" }
+  ];
+  statCards.innerHTML = "";
+  cards.forEach((c) => {
+    const div = document.createElement("div");
+    div.className = "stat-card";
+    const v = document.createElement("div");
+    v.className = "stat-value";
+    v.textContent = c.value;
+    const l = document.createElement("div");
+    l.className = "stat-label";
+    l.textContent = c.label;
+    div.append(v, l);
+    statCards.append(div);
+  });
+}
+
 function visibleComments() {
-  return overview.comments.filter((c) => {
+  return (overview.comments || []).filter((c) => {
     if (songFilter && c.song_name !== songFilter) return false;
     if (statusFilter && c.status !== statusFilter) return false;
     return true;
@@ -135,21 +295,38 @@ function renderCommentsAdmin() {
     head.className = "admin-comment-head";
 
     const meta = document.createElement("div");
-    meta.className = "comment-meta";
-    meta.style.marginBottom = "0";
+    meta.className = "comment-who";
+
+    meta.append(avatarFor(comment.author));
 
     const author = document.createElement("strong");
     author.textContent = comment.author || "Anonymous";
+    meta.append(author);
 
     const songChip = document.createElement("span");
     songChip.className = "song-chip";
     songChip.textContent = displayName(comment.song_name);
+    meta.append(songChip);
+
+    if (comment.user_id) {
+      const chip = document.createElement("span");
+      chip.className = "acct-badge";
+      chip.textContent = "account";
+      meta.append(chip);
+    }
+
+    if (comment.ip) {
+      const ip = document.createElement("span");
+      ip.className = "ip-chip";
+      ip.textContent = comment.ip;
+      ip.title = "IP captured for moderation";
+      meta.append(ip);
+    }
 
     const time = document.createElement("span");
     time.className = "comment-time";
     time.textContent = fmtDate(comment.created_at);
-
-    meta.append(author, songChip, time);
+    meta.append(time);
 
     const status = document.createElement("span");
     status.className = "status-badge " + (comment.status === "approved" ? "approved" : "hidden");
@@ -175,7 +352,7 @@ function renderCommentsAdmin() {
         comment.status = comment.status === "approved" ? "hidden" : "approved";
         renderAll();
       } catch (error) {
-        alert("Failed: " + error.message);
+        showToast("Failed: " + error.message, "error");
         toggleBtn.disabled = false;
       }
     });
@@ -192,56 +369,159 @@ function renderCommentsAdmin() {
         overview.comments = overview.comments.filter((c) => c.id !== comment.id);
         renderAll();
       } catch (error) {
-        alert("Failed: " + error.message);
+        showToast("Failed: " + error.message, "error");
         deleteBtn.disabled = false;
       }
     });
 
     actions.append(toggleBtn, deleteBtn);
+
+    if (comment.user_id) {
+      const banUserBtn = document.createElement("button");
+      banUserBtn.className = "admin-btn danger";
+      banUserBtn.type = "button";
+      banUserBtn.textContent = "Ban account";
+      banUserBtn.title = "Timeout / permanently ban this account";
+      banUserBtn.addEventListener("click", async () => {
+        const params = askBanParams();
+        if (!params) return;
+        banUserBtn.disabled = true;
+        try {
+          await MusicAPI.adminBanUser(token, comment.user_id, params.hours, params.reason);
+          showToast("Account banned.", "success");
+          loadOverview();
+        } catch (error) {
+          showToast("Failed: " + error.message, "error");
+          banUserBtn.disabled = false;
+        }
+      });
+      actions.append(banUserBtn);
+    }
+
+    if (comment.ip) {
+      const banIpBtn = document.createElement("button");
+      banIpBtn.className = "admin-btn danger";
+      banIpBtn.type = "button";
+      banIpBtn.textContent = "Ban IP";
+      banIpBtn.title = "Timeout / permanently ban this IP address";
+      banIpBtn.addEventListener("click", async () => {
+        const params = askBanParams();
+        if (!params) return;
+        banIpBtn.disabled = true;
+        try {
+          await MusicAPI.adminAddBan(token, "ip", comment.ip, params.hours, params.reason);
+          showToast("IP banned.", "success");
+          loadOverview();
+        } catch (error) {
+          showToast("Failed: " + error.message, "error");
+          banIpBtn.disabled = false;
+        }
+      });
+      actions.append(banIpBtn);
+    }
+
     item.append(head, text, actions);
     adminComments.append(item);
   });
 }
 
+/* ---------------- songs tab ---------------- */
+
 function renderSongsAdmin() {
-  songsBody.innerHTML = "";
+  songsGrid.innerHTML = "";
 
-  overview.songs.forEach((song) => {
-    const tr = document.createElement("tr");
+  (overview.songs || []).forEach((song) => {
+    const card = document.createElement("div");
+    card.className = "song-card";
 
-    const tdName = document.createElement("td");
-    tdName.textContent = song.display_name;
+    const head = document.createElement("div");
+    head.className = "song-card-head";
 
-    const tdListens = document.createElement("td");
-    tdListens.className = "mono";
-    tdListens.textContent = fmtNumber(song.listens);
+    const cover = document.createElement("img");
+    cover.className = "song-card-cover";
+    cover.alt = "";
+    if (song.cover_url) {
+      cover.src = MusicAPI.mediaUrl(song.cover_url);
+      cover.onerror = () => { cover.style.visibility = "hidden"; };
+    } else {
+      cover.style.visibility = "hidden";
+    }
+    head.append(cover);
 
-    const tdLikes = document.createElement("td");
-    tdLikes.className = "mono";
-    tdLikes.textContent = fmtNumber(song.likes);
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "song-card-title";
 
-    const tdComments = document.createElement("td");
-    tdComments.className = "mono";
-    tdComments.textContent = `${fmtNumber(song.comments_approved)} visible` +
-      (song.comments_hidden ? ` · ${song.comments_hidden} hidden` : "");
+    const title = document.createElement("strong");
+    title.textContent = song.display_name;
+    titleWrap.append(title);
 
-    const tdAdjust = document.createElement("td");
-    const wrap = document.createElement("div");
-    wrap.className = "adjust-wrap";
+    const meta = document.createElement("div");
+    meta.className = "song-card-meta";
+    meta.append(
+      Object.assign(document.createElement("span"), { textContent: `▶ ${fmtNumber(song.listens)}` }),
+      Object.assign(document.createElement("span"), { textContent: `♥ ${fmtNumber(song.likes)}` }),
+      Object.assign(document.createElement("span"), { textContent: `💬 ${fmtNumber(song.comments_approved)}` })
+    );
 
-    const listensInput = document.createElement("input");
-    listensInput.type = "number";
-    listensInput.min = "0";
-    listensInput.value = song.listens;
-    listensInput.className = "num-input mono";
-    listensInput.setAttribute("aria-label", `Listens for ${song.display_name}`);
+    const src = document.createElement("span");
+    src.className = "source-badge " + (song.source === "admin" ? "admin" : "static");
+    src.textContent = song.source === "admin" ? "added" : "bundled";
+    meta.append(src);
+    titleWrap.append(meta);
+    head.append(titleWrap);
+    card.append(head);
 
-    const likesInput = document.createElement("input");
-    likesInput.type = "number";
-    likesInput.min = "0";
-    likesInput.value = song.likes;
-    likesInput.className = "num-input mono";
-    likesInput.setAttribute("aria-label", `Likes for ${song.display_name}`);
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = song.display_name;
+    nameInput.maxLength = 80;
+    nameInput.setAttribute("aria-label", `Display name for ${song.display_name}`);
+    nameInput.style.cssText = "width:100%;border:1px solid var(--border);border-radius:10px;background:rgba(7,11,24,.7);color:var(--text);padding:.55rem .65rem;font-size:.9rem";
+    card.append(nameInput);
+
+    const desc = document.createElement("textarea");
+    desc.value = song.description || "";
+    desc.placeholder = "Description shown on the player (like SoundCloud)…";
+    desc.setAttribute("aria-label", `Description for ${song.display_name}`);
+    card.append(desc);
+
+    const fileRow = document.createElement("div");
+    fileRow.className = "song-file-row";
+
+    const coverLabel = document.createElement("label");
+    coverLabel.className = "file-label";
+    coverLabel.textContent = song.cover_url ? "🖼️ Replace cover" : "🖼️ Add cover";
+    const coverInput = document.createElement("input");
+    coverInput.type = "file";
+    coverInput.accept = "image/*";
+    coverInput.addEventListener("change", () => {
+      coverLabel.textContent = coverInput.files.length ? "🖼️ " + coverInput.files[0].name : "🖼️ Cover";
+      coverLabel.append(coverInput);
+    });
+    coverLabel.append(coverInput);
+    fileRow.append(coverLabel);
+
+    const audioLabel = document.createElement("label");
+    audioLabel.className = "file-label";
+    audioLabel.textContent = song.audio_url ? "🎵 Replace audio" : "🎵 Add audio";
+    const audioInput = document.createElement("input");
+    audioInput.type = "file";
+    audioInput.accept = "audio/*,.mp3,.wav,.ogg,.m4a";
+    audioInput.addEventListener("change", () => {
+      audioLabel.textContent = audioInput.files.length ? "🎵 " + audioInput.files[0].name : "🎵 Audio";
+      audioLabel.append(audioInput);
+    });
+    audioLabel.append(audioInput);
+    fileRow.append(audioLabel);
+
+    const mediaState = document.createElement("span");
+    mediaState.className = "mono-small";
+    mediaState.textContent = song.audio_url ? "audio ✓" : "no audio file";
+    fileRow.append(mediaState);
+    card.append(fileRow);
+
+    const actions = document.createElement("div");
+    actions.className = "song-card-actions";
 
     const saveBtn = document.createElement("button");
     saveBtn.className = "admin-btn";
@@ -251,28 +531,289 @@ function renderSongsAdmin() {
       saveBtn.disabled = true;
       saveBtn.textContent = "…";
       try {
-        await MusicAPI.adminSetCounters(token, {
-          song: song.song,
-          listens: parseInt(listensInput.value, 10) || 0,
-          likes: parseInt(likesInput.value, 10) || 0
-        });
-        saveBtn.textContent = "saved ✓";
-        await loadOverview();
-        setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.disabled = false; }, 900);
+        const fd = new FormData();
+        fd.append("display_name", nameInput.value.trim() || song.display_name);
+        fd.append("description", desc.value);
+        if (coverInput.files.length) fd.append("cover", coverInput.files[0]);
+        if (audioInput.files.length) fd.append("audio", audioInput.files[0]);
+        await MusicAPI.adminEditSong(token, song.song, fd);
+        showToast(`Saved "${song.display_name}"`, "success");
+        loadOverview();
+        saveBtn.textContent = "Save";
+        saveBtn.disabled = false;
       } catch (error) {
-        alert("Failed: " + error.message);
+        showToast("Failed: " + error.message, "error");
         saveBtn.textContent = "Save";
         saveBtn.disabled = false;
       }
     });
+    actions.append(saveBtn);
 
-    wrap.append(listensInput, likesInput, saveBtn);
-    tdAdjust.append(wrap);
+    if (song.source === "admin") {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "admin-btn danger";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`Delete "${song.display_name}" and all its stats/comments?`)) return;
+        deleteBtn.disabled = true;
+        try {
+          await MusicAPI.adminDeleteSong(token, song.song);
+          showToast("Song deleted.", "success");
+          loadOverview();
+        } catch (error) {
+          showToast("Failed: " + error.message, "error");
+          deleteBtn.disabled = false;
+        }
+      });
+      actions.append(deleteBtn);
+    }
 
-    tr.append(tdName, tdListens, tdLikes, tdComments, tdAdjust);
-    songsBody.append(tr);
+    card.append(actions);
+    songsGrid.append(card);
   });
 }
+
+addSongForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  addSongStatus.textContent = "";
+  const title = newSongTitle.value.trim();
+  if (!title) return;
+
+  addSongBtn.disabled = true;
+  addSongBtn.textContent = "uploading…";
+  try {
+    const fd = new FormData();
+    fd.append("title", title);
+    fd.append("description", newSongDescription.value);
+    if (newSongAudio.files.length) fd.append("audio", newSongAudio.files[0]);
+    if (newSongCover.files.length) fd.append("cover", newSongCover.files[0]);
+    await MusicAPI.adminAddSong(token, fd);
+    showToast(`Added "${title}" — it now appears on the site.`, "success");
+    newSongTitle.value = "";
+    newSongDescription.value = "";
+    newSongAudio.value = "";
+    newSongCover.value = "";
+    loadOverview();
+  } catch (error) {
+    addSongStatus.textContent = error.message;
+    showToast("Failed: " + error.message, "error");
+  } finally {
+    addSongBtn.disabled = false;
+    addSongBtn.textContent = "Add song";
+  }
+});
+
+/* ---------------- users tab ---------------- */
+
+function renderUsersAdmin() {
+  usersBody.innerHTML = "";
+
+  if (!overview.users.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.className = "empty-note";
+    td.textContent = "No accounts yet — visitors can create one from the Sign in button on the site.";
+    tr.append(td);
+    usersBody.append(tr);
+    return;
+  }
+
+  overview.users.forEach((user) => {
+    const tr = document.createElement("tr");
+
+    const tdName = document.createElement("td");
+    const row = document.createElement("div");
+    row.className = "user-row";
+    row.append(avatarFor(user.username));
+    const nameWrap = document.createElement("span");
+    nameWrap.textContent = user.username;
+    row.append(nameWrap);
+    if (user.banned) {
+      const chip = document.createElement("span");
+      chip.className = "user-banned-chip";
+      chip.textContent = "banned";
+      chip.title = (user.banned.until ? "until " + new Date(user.banned.until).toLocaleString() : "permanent") + " — " + (user.banned.reason || "");
+      row.append(chip);
+    }
+    tdName.append(row);
+    tr.append(tdName);
+
+    const tdJoined = document.createElement("td");
+    tdJoined.className = "mono-small";
+    tdJoined.textContent = fmtDate(user.created_at);
+    tr.append(tdJoined);
+
+    const tdActivity = document.createElement("td");
+    tdActivity.className = "mono-small";
+    tdActivity.textContent = `💬 ${fmtNumber(user.comments_posted)} · ♥ ${fmtNumber(user.likes_given)}`;
+    tr.append(tdActivity);
+
+    const tdBan = document.createElement("td");
+    const controls = document.createElement("div");
+    controls.className = "ban-controls";
+
+    const hoursInput = document.createElement("input");
+    hoursInput.type = "number";
+    hoursInput.min = "0";
+    hoursInput.step = "0.5";
+    hoursInput.placeholder = "hours";
+    hoursInput.title = "Empty or 0 = permanent";
+    hoursInput.setAttribute("aria-label", `Ban hours for ${user.username}`);
+
+    const reasonInput = document.createElement("input");
+    reasonInput.type = "text";
+    reasonInput.placeholder = "reason";
+    reasonInput.setAttribute("aria-label", `Ban reason for ${user.username}`);
+
+    const banBtn = document.createElement("button");
+    banBtn.className = "admin-btn danger";
+    banBtn.type = "button";
+    banBtn.textContent = user.banned ? "Re-ban" : "Ban";
+    banBtn.addEventListener("click", async () => {
+      const hours = hoursInput.value.trim() === "" || Number(hoursInput.value) === 0 ? null : Number(hoursInput.value);
+      const reason = reasonInput.value.trim() || "no reason given";
+      banBtn.disabled = true;
+      try {
+        await MusicAPI.adminBanUser(token, user.id, hours, reason);
+        showToast(`${user.username} banned${hours ? ` for ${hours}h` : " permanently"}.`, "success");
+        loadOverview();
+      } catch (error) {
+        showToast("Failed: " + error.message, "error");
+        banBtn.disabled = false;
+      }
+    });
+
+    controls.append(hoursInput, reasonInput, banBtn);
+
+    if (user.banned) {
+      const unbanBtn = document.createElement("button");
+      unbanBtn.className = "admin-btn";
+      unbanBtn.type = "button";
+      unbanBtn.textContent = "Unban";
+      unbanBtn.addEventListener("click", async () => {
+        unbanBtn.disabled = true;
+        try {
+          await MusicAPI.adminUnbanUser(token, user.id);
+          showToast(`${user.username} unbanned.`, "success");
+          loadOverview();
+        } catch (error) {
+          showToast("Failed: " + error.message, "error");
+          unbanBtn.disabled = false;
+        }
+      });
+      controls.append(unbanBtn);
+    }
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "admin-btn danger";
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.title = "Delete this account (comments stay, flagged as anonymous)";
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`Delete account "${user.username}"?`)) return;
+      deleteBtn.disabled = true;
+      try {
+        await MusicAPI.adminDeleteUser(token, user.id);
+        showToast("Account deleted.", "success");
+        loadOverview();
+      } catch (error) {
+        showToast("Failed: " + error.message, "error");
+        deleteBtn.disabled = false;
+      }
+    });
+    controls.append(deleteBtn);
+
+    tdBan.append(controls);
+    tr.append(tdBan);
+    usersBody.append(tr);
+  });
+}
+
+/* ---------------- bans tab ---------------- */
+
+function renderBansAdmin() {
+  bansBody.innerHTML = "";
+
+  if (!overview.bans.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.className = "empty-note";
+    td.textContent = "No active bans. Quiet in here. 🌙";
+    tr.append(td);
+    bansBody.append(tr);
+    return;
+  }
+
+  overview.bans.forEach((ban) => {
+    const tr = document.createElement("tr");
+
+    const tdKind = document.createElement("td");
+    const kind = document.createElement("span");
+    kind.className = "ban-kind-chip " + (ban.kind === "ip" ? "ip" : "user");
+    kind.textContent = ban.kind === "ip" ? "IP" : "account";
+    tdKind.append(kind);
+    tr.append(tdKind);
+
+    const tdValue = document.createElement("td");
+    tdValue.className = "mono";
+    tdValue.textContent = ban.kind === "user" && ban.banned_username ? `${ban.banned_username}` : ban.value;
+    if (ban.kind === "user" && ban.banned_username) {
+      tdValue.title = "user id: " + ban.value;
+    }
+    tr.append(tdValue);
+
+    const tdReason = document.createElement("td");
+    tdReason.textContent = ban.reason || "—";
+    tr.append(tdReason);
+
+    const tdExpiry = document.createElement("td");
+    tdExpiry.className = "mono-small";
+    tdExpiry.textContent = ban.expires_at ? fmtExpiry(ban.expires_at) : "permanent";
+    tr.append(tdExpiry);
+
+    const tdLift = document.createElement("td");
+    const liftBtn = document.createElement("button");
+    liftBtn.className = "admin-btn";
+    liftBtn.type = "button";
+    liftBtn.textContent = "Lift";
+    liftBtn.addEventListener("click", async () => {
+      liftBtn.disabled = true;
+      try {
+        await MusicAPI.adminLiftBan(token, ban.id);
+        showToast("Ban lifted.", "success");
+        loadOverview();
+      } catch (error) {
+        showToast("Failed: " + error.message, "error");
+        liftBtn.disabled = false;
+      }
+    });
+    tdLift.append(liftBtn);
+    tr.append(tdLift);
+
+    bansBody.append(tr);
+  });
+}
+
+addBanForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const value = banValue.value.trim();
+  if (!value) return;
+  const hours = banHours.value.trim() === "" || Number(banHours.value) === 0 ? null : Number(banHours.value);
+  const reason = banReason.value.trim() || "no reason given";
+  try {
+    await MusicAPI.adminAddBan(token, "ip", value, hours, reason);
+    showToast(`Banned ${value}${hours ? ` for ${hours}h` : " permanently"}.`, "success");
+    banValue.value = "";
+    banHours.value = "";
+    banReason.value = "";
+    loadOverview();
+  } catch (error) {
+    showToast("Failed: " + error.message, "error");
+  }
+});
 
 /* ---------------- events ---------------- */
 
@@ -324,6 +865,8 @@ tabs.forEach((tab) => {
     const target = tab.dataset.tab;
     tabComments.hidden = target !== "comments";
     tabSongs.hidden = target !== "songs";
+    tabUsers.hidden = target !== "users";
+    tabBans.hidden = target !== "bans";
   });
 });
 
@@ -339,10 +882,14 @@ tabs.forEach((tab) => {
       " — the admin panel needs the Node server running (node server.js), " +
       "or set <span class='mono'>apiBase</span> in config.js to the deployed backend URL.";
     loginBtn.disabled = true;
+    githubBtn.disabled = true;
     return;
   }
 
   apiStatus.textContent = `backend: ${MusicAPI.base || "same origin"} — ready.`;
+  await loadAuthConfig();
+
+  if (handleGithubParams()) return;
 
   if (token) {
     // Validate the stored token by loading data; on 401 we fall back to login.

@@ -2,8 +2,9 @@
  * Site configuration — GitHub Pages <-> database backend
  * =====================================================
  *
- * GitHub Pages only hosts static files, so the listens / likes / comments
- * database lives in this little Node server (server.js in this repo).
+ * GitHub Pages only hosts static files, so the tracks, listens, likes,
+ * comments, accounts and bans live in this little Node server
+ * (server.js in this repo).
  *
  *   1. Deploy server.js anywhere (Render / Railway / Fly.io / your PC / VPS).
  *   2. Paste the public URL below. Example:

@@ -67,16 +67,27 @@ window.MusicAPI = (function () {
     return detecting;
   }
 
+  // Resolve a media URL that may be relative to the backend origin.
+  function mediaUrl(url) {
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    return base + url;
+  }
+
   async function jfetch(path, options) {
     const res = await fetch(base + path, options);
     if (!res.ok) {
       let message = "HTTP " + res.status;
+      let extra = null;
       try {
         const data = await res.json();
         if (data && data.error) message = data.error;
+        if (data && data.banned) extra = data;
       } catch (_) {}
       const err = new Error(message);
       err.status = res.status;
+      err.banned = extra ? extra.banned : false;
+      err.banInfo = extra || null;
       throw err;
     }
     return res.json();
@@ -86,6 +97,15 @@ window.MusicAPI = (function () {
     const headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = "Bearer " + token;
     return { method, headers, body: JSON.stringify(body) };
+  }
+
+  function authedOptions(method, token, body) {
+    const options = { method, headers: { Authorization: "Bearer " + token } };
+    if (body !== undefined) {
+      options.headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(body);
+    }
+    return options;
   }
 
   function assertServer(what) {
@@ -100,6 +120,7 @@ window.MusicAPI = (function () {
     get mode() { return mode; },
     get base() { return base; },
     get detected() { return detected; },
+    mediaUrl,
 
     stats(song) {
       assertServer("stats");
@@ -116,9 +137,9 @@ window.MusicAPI = (function () {
       return jfetch("/api/listen", jsonOptions("POST", { song }));
     },
 
-    like(song, action) {
+    like(song, action, token) {
       assertServer("like");
-      return jfetch("/api/like", jsonOptions("POST", { song, action: action ? "like" : "unlike" }));
+      return jfetch("/api/like", jsonOptions("POST", { song, action: action ? "like" : "unlike" }, token));
     },
 
     comments(song, limit) {
@@ -127,9 +148,30 @@ window.MusicAPI = (function () {
       return jfetch("/api/comments" + q + (limit ? (q ? "&" : "?") + "limit=" + limit : ""));
     },
 
-    addComment(payload) {
+    addComment(payload, token) {
       assertServer("addComment");
-      return jfetch("/api/comments", jsonOptions("POST", payload));
+      return jfetch("/api/comments", jsonOptions("POST", payload, token));
+    },
+
+    /* ---------------- accounts ---------------- */
+
+    register(username, password) {
+      assertServer("register");
+      return jfetch("/api/users/register", jsonOptions("POST", { username, password }));
+    },
+
+    login(username, password) {
+      assertServer("login");
+      return jfetch("/api/users/login", jsonOptions("POST", { username, password }));
+    },
+
+    logout(token) {
+      return jfetch("/api/users/logout", jsonOptions("POST", {}, token));
+    },
+
+    me(token) {
+      assertServer("me");
+      return jfetch("/api/me", { headers: { Authorization: "Bearer " + token } });
     },
 
     /* ---------------- admin ---------------- */
@@ -157,6 +199,61 @@ window.MusicAPI = (function () {
 
     adminSetCounters(token, payload) {
       return jfetch("/api/admin/counters", jsonOptions("PATCH", payload, token));
+    },
+
+    adminAuthConfig() {
+      assertServer("auth config");
+      return jfetch("/api/auth/config");
+    },
+
+    // GitHub sign-in: full-page redirect to the backend, which redirects to GitHub.
+    githubSignIn() {
+      assertServer("github sign-in");
+      window.location.href = base + "/api/auth/github?origin=" + encodeURIComponent(location.origin);
+    },
+
+    githubExchange(code) {
+      assertServer("github exchange");
+      return jfetch("/api/auth/github/exchange", jsonOptions("POST", { code }));
+    },
+
+    adminAddSong(token, formData) {
+      return jfetch("/api/admin/songs", { method: "POST", headers: { Authorization: "Bearer " + token }, body: formData });
+    },
+
+    adminEditSong(token, songKey, formDataOrPayload) {
+      if (formDataOrPayload instanceof FormData) {
+        return jfetch("/api/admin/songs/" + encodeURIComponent(songKey), {
+          method: "PATCH",
+          headers: { Authorization: "Bearer " + token },
+          body: formDataOrPayload
+        });
+      }
+      return jfetch("/api/admin/songs/" + encodeURIComponent(songKey), jsonOptions("PATCH", formDataOrPayload, token));
+    },
+
+    adminDeleteSong(token, songKey) {
+      return jfetch("/api/admin/songs/" + encodeURIComponent(songKey), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+    },
+
+    adminBanUser(token, userId, hours, reason) {
+      return jfetch("/api/admin/users/" + encodeURIComponent(userId) + "/ban", jsonOptions("POST", { hours, reason }, token));
+    },
+
+    adminUnbanUser(token, userId) {
+      return jfetch("/api/admin/users/" + encodeURIComponent(userId) + "/unban", jsonOptions("POST", {}, token));
+    },
+
+    adminDeleteUser(token, userId) {
+      return jfetch("/api/admin/users/" + encodeURIComponent(userId), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+    },
+
+    adminAddBan(token, kind, value, hours, reason) {
+      return jfetch("/api/admin/bans", jsonOptions("POST", { kind, value, hours, reason }, token));
+    },
+
+    adminLiftBan(token, banId) {
+      return jfetch("/api/admin/bans/" + encodeURIComponent(banId), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
     }
   };
 })();

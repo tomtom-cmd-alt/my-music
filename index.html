@@ -7,9 +7,12 @@
       name="description"
       content="Tracks, stems, Ableton live sets and downloads from Thomas Miller."
     />
-    <meta http-equiv="refresh" content="0; url=https://my-music-dnog.onrender.com/" />
     <script>
-      window.location.replace("https://my-music-dnog.onrender.com/");
+      // The live site is the Render deployment. GitHub Pages only exists to
+      // redirect there — this guard prevents a redirect loop ON Render itself.
+      if (location.hostname.endsWith("github.io")) {
+        window.location.replace("https://my-music-dnog.onrender.com/");
+      }
     </script>
     <title>Thomas Miller | Music & Stems</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

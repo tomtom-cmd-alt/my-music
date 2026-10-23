@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT COLLATE NOCASE NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,               -- scrypt: "<salt>:<hash>"
+  password_hash TEXT NOT NULL,               -- scrypt: "<salt>:<hash>" ('' for GitHub-only accounts)
+  github_login TEXT,                         -- github login for OAuth sign-ins (NULL for password accounts)
   created_at TEXT NOT NULL
 );
 

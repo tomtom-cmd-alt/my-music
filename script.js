@@ -103,6 +103,7 @@ const loginUsername = document.getElementById("login-username");
 const loginPassword = document.getElementById("login-password");
 const regUsername = document.getElementById("reg-username");
 const regPassword = document.getElementById("reg-password");
+const githubAuthBtn = document.getElementById("github-auth-btn");
 const msgBadge = document.getElementById("msg-badge");
 
 const LIKED_STORAGE_KEY = "tm-music-likes-v1";
@@ -930,6 +931,46 @@ function authFail(message) {
   authError.hidden = false;
 }
 
+/* --- GitHub OAuth return (?gh=<one-time code> / ?gu= after admin flow) --- */
+
+async function handleGithubReturn() {
+  const params = new URLSearchParams(location.search);
+  const ghError = params.get("gh_error");
+  const code = params.get("gu") || params.get("gh");
+
+  if (ghError) {
+    history.replaceState(null, "", location.pathname);
+    showToast("GitHub sign-in failed: " + ghError, "error", 6000);
+    return true;
+  }
+
+  if (code) {
+    history.replaceState(null, "", location.pathname);
+    try {
+      const data = await MusicAPI.githubUserExchange(code);
+      account = { token: data.token, id: data.user.id, username: data.user.username, avatar_url: data.user.avatar_url || null, is_admin: Boolean(data.user.is_admin) };
+      saveAccount(account);
+      updateAuthUI();
+      showToast(`Welcome, ${account.username}!`, "success");
+      await restoreAccount();
+    } catch (error) {
+      showToast("GitHub sign-in failed: " + error.message, "error", 6000);
+    }
+    return true;
+  }
+  return false;
+}
+
+if (githubAuthBtn) {
+  githubAuthBtn.addEventListener("click", () => {
+    try {
+      MusicAPI.githubUserSignIn();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+}
+
 if (loginForm) {
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1252,10 +1293,13 @@ MusicAPI.onChange(() => {
 MusicAPI.detect().then(({ mode }) => {
   renderApiMode();
   refreshAllStats();
-  restoreAccount().then(() => {
-    refreshCurrentStats();
-    loadComments();
-    refreshUnreadBadge();
+  handleGithubReturn().then((handled) => {
+    const settled = handled ? Promise.resolve() : restoreAccount();
+    return settled.then(() => {
+      refreshCurrentStats();
+      loadComments();
+      refreshUnreadBadge();
+    });
   });
   console.info(`[music] storage mode: ${mode}${mode === "server" ? ` (${MusicAPI.base || "same origin"})` : " (localStorage fallback)"}`);
 });

@@ -384,7 +384,7 @@ async function activeBans() {
 /* ------------------------------------------------------------------ */
 
 const adminTokens = new Map();        // token -> expiresAt
-const oneTimeCodes = new Map();       // one-time code -> { token, expiresAt }
+const oneTimeCodes = new Map();       // one-time code -> { token, expiresAt, kind: "admin"|"user", user? }
 
 function timingSafeEqualStr(a, b) {
   const ha = crypto.createHash("sha256").update(String(a)).digest();
@@ -423,8 +423,8 @@ function requireAdmin(req, res, next) {
 
 /* --- GitHub OAuth state signing (no cookies needed cross-origin) --- */
 
-function signState(origin) {
-  const payload = Buffer.from(JSON.stringify({ o: origin, t: Date.now() })).toString("base64url");
+function signState(origin, returnPath) {
+  const payload = Buffer.from(JSON.stringify({ o: origin, p: returnPath, t: Date.now() })).toString("base64url");
   const sig = crypto
     .createHmac("sha256", GITHUB_CLIENT_SECRET)
     .update(payload)
@@ -1404,6 +1404,8 @@ function baseUrlOf(req) {
   return `${proto}://${host}`;
 }
 
+const GH_RETURN_PAGES = ["index.html", "music.html", "stems.html", "live-sets.html", "about.html", "profile.html", "messages.html", "admin.html"];
+
 app.get("/api/auth/github", (req, res) => {
   if (!GITHUB_ENABLED) {
     return res.status(501).json({
@@ -1412,30 +1414,67 @@ app.get("/api/auth/github", (req, res) => {
   }
   const origin = String(req.query.origin || "");
   if (!/^https?:\/\//i.test(origin)) {
-    return res.status(400).json({ error: "missing or invalid ?origin= (the admin page URL origin)" });
+    return res.status(400).json({ error: "missing or invalid ?origin= (the page URL origin)" });
   }
+  const rawPath = String(req.query.path || "admin.html");
+  const returnPath = GH_RETURN_PAGES.includes(rawPath) ? rawPath : "index.html";
   const redirectUri = `${baseUrlOf(req)}/api/auth/github/callback`;
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: redirectUri,
     scope: "read:user",
-    state: signState(origin),
-    allow_signup: "false"
+    state: signState(origin, returnPath),
+    allow_signup: "true"
   });
   res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
 });
 
+/* Find the site account for a GitHub user, or create one.
+   Matched by stored github_login; otherwise derives a free username
+   from the GitHub login. Never links to a password account. */
+async function upsertGithubUser(ghUser) {
+  const ghLogin = String(ghUser.login || "").trim();
+  if (!ghLogin) throw new Error("github account has no login");
+
+  const existing = await q(db.get("SELECT * FROM users WHERE github_login = ?", [ghLogin]));
+  if (existing) return existing;
+
+  let base = ghLogin.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 17) || "user";
+  while (base.length < 3) base += "gh";
+  let username = base;
+  for (let n = 2; ; n++) {
+    const taken = await q(db.get("SELECT id FROM users WHERE username = ?", [username]));
+    if (!taken) break;
+    username = `${base.slice(0, 17)}-${n}`;
+  }
+
+  const id = crypto.randomUUID();
+  await q(db.run(
+    "INSERT INTO users (id, username, password_hash, created_at, github_login) VALUES (?, ?, '', ?, ?)",
+    [id, username, new Date().toISOString(), ghLogin]
+  ));
+  return q(db.get("SELECT * FROM users WHERE id = ?", [id]));
+}
+
+async function issueUserOneTime(userRow) {
+  const session = await createSession(userRow.id);
+  const code = crypto.randomBytes(24).toString("hex");
+  oneTimeCodes.set(code, { token: session.token, expiresAt: Date.now() + 5 * 60 * 1000, kind: "user", user: publicUser(userRow) });
+  return code;
+}
+
 app.get("/api/auth/github/callback", async (req, res) => {
+  const stateData = verifyState(String(req.query.state || ""));
+  const origin = stateData?.o || "";
+  const returnPath = GH_RETURN_PAGES.includes(stateData?.p) ? stateData.p : "index.html";
   const fail = (msg) => {
-    const origin = verifyState(String(req.query.state || ""))?.o;
-    if (origin) return res.redirect(`${origin}/admin.html?gh_error=${encodeURIComponent(msg)}`);
+    if (origin) return res.redirect(`${origin}/${returnPath}?gh_error=${encodeURIComponent(msg)}`);
     res.status(403).send(`GitHub sign-in failed: ${msg}`);
   };
 
   if (!GITHUB_ENABLED) return fail("github not configured");
   if (req.query.error) return fail(String(req.query.error));
-  const data = verifyState(String(req.query.state || ""));
-  if (!data || !data.o) return fail("bad state");
+  if (!stateData || !stateData.o) return fail("bad state");
   const code = String(req.query.code || "");
   if (!code) return fail("missing code");
 
@@ -1455,19 +1494,35 @@ app.get("/api/auth/github/callback", async (req, res) => {
     if (!accessToken) return fail(tokenData.error_description || "token exchange failed");
 
     const userRes = await fetch("https://api.github.com/user", {
-      headers: { "Authorization": `Bearer ${accessToken}`, "User-Agent": "my-music-admin", "Accept": "application/vnd.github+json" }
+      headers: { "Authorization": `Bearer ${accessToken}`, "User-Agent": "my-music-site", "Accept": "application/vnd.github+json" }
     });
     const ghUser = await userRes.json();
     const login = String(ghUser.login || "").toLowerCase();
+    if (!login) return fail("could not read the github account");
 
-    if (!login || !ADMIN_GITHUB_USERS.includes(login)) {
-      return fail(`account '${login || "unknown"}' is not on the admin allow-list`);
+    if (ADMIN_GITHUB_USERS.includes(login)) {
+      // Admin: sign into the admin panel (admin.js consumes ?gh=), and —
+      // when returning to a main page — also hand over a normal site session.
+      const token = issueAdminToken();
+      const oneTime = crypto.randomBytes(24).toString("hex");
+      oneTimeCodes.set(oneTime, { token, expiresAt: Date.now() + 5 * 60 * 1000, kind: "admin" });
+      let guParam = "";
+      if (returnPath !== "admin.html") {
+        try {
+          const userRow = await upsertGithubUser(ghUser);
+          const uc = await issueUserOneTime(userRow);
+          guParam = `&gu=${uc}`;
+        } catch (_) { /* site session is best-effort; admin sign-in still works */ }
+      }
+      return res.redirect(`${origin}/${returnPath}?gh=${oneTime}${guParam}`);
     }
 
-    const token = issueAdminToken();
-    const oneTime = crypto.randomBytes(24).toString("hex");
-    oneTimeCodes.set(oneTime, { token, expiresAt: Date.now() + 5 * 60 * 1000 });
-    res.redirect(`${data.o}/admin.html?gh=${oneTime}`);
+    // Regular GitHub user: find-or-create the site account, then sign in.
+    const userRow = await upsertGithubUser(ghUser);
+    const ban = await activeBanFor(userRow.id, clientIp(req));
+    if (ban) return fail(banMessage(ban));
+    const uc = await issueUserOneTime(userRow);
+    res.redirect(`${origin}/${returnPath}?gh=${uc}`);
   } catch (error) {
     fail(error.message || "github request failed");
   }
@@ -1476,12 +1531,23 @@ app.get("/api/auth/github/callback", async (req, res) => {
 app.post("/api/auth/github/exchange", (req, res) => {
   const code = String(req.body?.code || "");
   const entry = oneTimeCodes.get(code);
-  if (!entry || entry.expiresAt <= Date.now()) {
+  if (!entry || entry.kind !== "admin" || entry.expiresAt <= Date.now()) {
     oneTimeCodes.delete(code);
     return res.status(400).json({ error: "invalid or expired sign-in code — try again" });
   }
   oneTimeCodes.delete(code);
   res.json({ token: entry.token, expires_in_ms: TOKEN_TTL_MS, via: "github" });
+});
+
+app.post("/api/auth/github/user-exchange", (req, res) => {
+  const code = String(req.body?.code || "");
+  const entry = oneTimeCodes.get(code);
+  if (!entry || entry.kind !== "user" || entry.expiresAt <= Date.now()) {
+    oneTimeCodes.delete(code);
+    return res.status(400).json({ error: "invalid or expired sign-in code — try again" });
+  }
+  oneTimeCodes.delete(code);
+  res.json({ token: entry.token, expires_in_ms: SESSION_TTL_MS, user: entry.user });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1972,6 +2038,7 @@ async function initDatabase() {
   await addColumnIfMissing("users", "bio TEXT NOT NULL DEFAULT ''");
   await addColumnIfMissing("users", "profile_visibility TEXT NOT NULL DEFAULT 'private'");
   await addColumnIfMissing("users", "dm_policy TEXT NOT NULL DEFAULT 'anyone'");
+  await addColumnIfMissing("users", "github_login TEXT");
 
   const defaultSongs = [
     "Whispers",

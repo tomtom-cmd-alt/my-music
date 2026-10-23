@@ -1098,6 +1098,38 @@ td.size { color: var(--muted); font-size: 0.9rem; }
 
 .auth-note { margin: 0.9rem 0 0; font-size: 0.8rem; }
 
+/* ---------- GitHub sign-in (auth modal) ---------- */
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.95rem 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.auth-divider::before,
+.auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+.gh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 100%;
+  background: #f0f6fc;
+  color: #0d1117;
+  border: 1px solid rgba(240, 246, 252, 0.4);
+  font-weight: 600;
+}
+
+.gh-btn:hover { background: #ffffff; transform: translateY(-1px); }
+
+.gh-btn svg { width: 17px; height: 17px; fill: currentColor; flex: none; }
+
 /* ---------- toasts ---------- */
 
 .toast-root {

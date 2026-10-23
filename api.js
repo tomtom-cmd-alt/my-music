@@ -304,6 +304,19 @@ window.MusicAPI = (function () {
       return jfetch("/api/auth/github/exchange", jsonOptions("POST", { code }));
     },
 
+    // Site-wide GitHub sign-in: full-page redirect; the server sends the
+    // user back to the current page with a one-time ?gh= code.
+    githubUserSignIn() {
+      assertServer("github sign-in");
+      const page = (location.pathname.split("/").pop() || "index.html");
+      window.location.href = base + "/api/auth/github?origin=" + encodeURIComponent(location.origin) + "&path=" + encodeURIComponent(page);
+    },
+
+    githubUserExchange(code) {
+      assertServer("github user exchange");
+      return jfetch("/api/auth/github/user-exchange", jsonOptions("POST", { code }));
+    },
+
     adminAddSong(token, formData) {
       return jfetch("/api/admin/songs", { method: "POST", headers: { Authorization: "Bearer " + token }, body: formData });
     },

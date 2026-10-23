@@ -174,6 +174,93 @@ window.MusicAPI = (function () {
       return jfetch("/api/me", { headers: { Authorization: "Bearer " + token } });
     },
 
+    /* ---------------- profiles ---------------- */
+
+    getUser(username, token) {
+      assertServer("profiles");
+      const headers = {};
+      if (token) headers.Authorization = "Bearer " + token;
+      return jfetch("/api/users/" + encodeURIComponent(username), { headers });
+    },
+
+    updateProfile(token, payload) {
+      assertServer("profile edit");
+      return jfetch("/api/profile", jsonOptions("PATCH", payload, token));
+    },
+
+    uploadProfileImage(token, kind, file) {
+      assertServer("profile image");
+      const form = new FormData();
+      form.append(kind === "bg" ? "bg" : "avatar", file, file.name);
+      return jfetch("/api/profile/" + (kind === "bg" ? "bg" : "avatar"), {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: form
+      });
+    },
+
+    clearProfileImage(token, kind) {
+      assertServer("profile image");
+      return jfetch("/api/profile/" + (kind === "bg" ? "bg" : "avatar"), {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + token }
+      });
+    },
+
+    /* ---------------- friends ---------------- */
+
+    friends(token) {
+      assertServer("friends");
+      return jfetch("/api/friends", { headers: { Authorization: "Bearer " + token } });
+    },
+
+    friendRequest(token, username) {
+      assertServer("friends");
+      return jfetch("/api/friends/request", jsonOptions("POST", { username }, token));
+    },
+
+    friendAccept(token, id) {
+      assertServer("friends");
+      return jfetch("/api/friends/accept", jsonOptions("POST", { id }, token));
+    },
+
+    friendDecline(token, id) {
+      assertServer("friends");
+      return jfetch("/api/friends/decline", jsonOptions("POST", { id }, token));
+    },
+
+    friendRemove(token, username) {
+      assertServer("friends");
+      return jfetch("/api/friends/" + encodeURIComponent(username), {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + token }
+      });
+    },
+
+    /* ---------------- direct messages ---------------- */
+
+    unreadCount(token) {
+      assertServer("messages");
+      return jfetch("/api/messages/unread", { headers: { Authorization: "Bearer " + token } });
+    },
+
+    conversations(token) {
+      assertServer("messages");
+      return jfetch("/api/messages/conversations", { headers: { Authorization: "Bearer " + token } });
+    },
+
+    threadWith(token, username) {
+      assertServer("messages");
+      return jfetch("/api/messages/with/" + encodeURIComponent(username), {
+        headers: { Authorization: "Bearer " + token }
+      });
+    },
+
+    sendMessage(token, to, text) {
+      assertServer("messages");
+      return jfetch("/api/messages", jsonOptions("POST", { to, text }, token));
+    },
+
     /* ---------------- admin ---------------- */
 
     adminLogin(password) {
@@ -254,6 +341,10 @@ window.MusicAPI = (function () {
 
     adminLiftBan(token, banId) {
       return jfetch("/api/admin/bans/" + encodeURIComponent(banId), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+    },
+
+    adminDeleteMessage(token, id) {
+      return jfetch("/api/admin/messages/" + encodeURIComponent(id), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
     }
   };
 })();

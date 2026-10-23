@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Stream every Thomas Miller track in the browser — likes, comments and plays included."
+    />
+    <script>
+      if (location.hostname.endsWith("github.io")) {
+        window.location.replace("https://my-music-dnog.onrender.com/music");
+      }
+    </script>
+    <title>Music | Thomas Miller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob blob-a"></div>
+      <div class="aurora-blob blob-b"></div>
+      <div class="aurora-blob blob-c"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="/" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="/music" class="active">Music</a>
+          <a href="/stems">Stems</a>
+          <a href="/live-sets">Live Sets</a>
+          <a href="/about">About</a>
+          <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
+        </nav>
+        <div class="auth-area" id="auth-area">
+          <button id="signin-btn" class="auth-btn" type="button">Sign in</button>
+          <div id="user-chip" class="user-chip" hidden>
+            <span id="user-avatar" class="avatar" aria-hidden="true"></span>
+            <span id="user-name" class="user-name"></span>
+            <span id="msg-badge" class="msg-badge" hidden></span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </div>
+          <div id="user-menu" class="user-menu">
+            <a id="menu-profile" href="/profile">My profile</a>
+            <a href="/messages">Messages</a>
+            <a id="menu-admin" href="/admin.html" hidden>Admin panel</a>
+            <button id="signout-btn" class="auth-out" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <p class="section-kicker">Music</p>
+            <h2>Listen in-browser</h2>
+          </div>
+
+          <div class="player" id="player-card">
+            <div class="player-main">
+              <div class="cover-wrap">
+                <img id="np-cover" class="np-cover" alt="" aria-hidden="true" />
+                <div class="cover-fallback" id="cover-fallback" aria-hidden="true"></div>
+                <div class="eq on-cover" id="np-eq">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+
+              <div class="player-body">
+                <div class="now-playing">
+                  <div class="np-line">
+                    <span id="np-title">select a track</span>
+                    <span class="np-badge mono" id="np-source-badge" hidden>new</span>
+                  </div>
+                  <span id="np-time" class="mono">0:00 / 0:00</span>
+                </div>
+
+                <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
+
+                <p id="np-description" class="np-description" hidden></p>
+
+                <div class="player-meta">
+                  <div class="controls">
+                    <button id="prev" aria-label="Previous track">⏮</button>
+                    <button id="play" class="play-btn" aria-label="Play">▶</button>
+                    <button id="next" aria-label="Next track">⏭</button>
+                    <button id="like-btn" class="like-btn" type="button" aria-pressed="false" title="Like this track">♡</button>
+                  </div>
+                  <div class="community-stats" aria-label="Per-track community stats">
+                    <div class="community-stat"><span id="song-listens">0</span><small>plays</small></div>
+                    <div class="community-stat"><span id="song-likes">0</span><small>likes</small></div>
+                    <div class="community-stat"><span id="song-comments">0</span><small>comments</small></div>
+                  </div>
+                  <div class="volume">
+                    <span aria-hidden="true">🔊</span>
+                    <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="community-head">
+              <span id="api-mode" class="api-mode" title="Where listens, likes and comments are stored">
+                <span class="mode-dot"></span>
+                <span id="api-mode-text">checking&hellip;</span>
+              </span>
+              <span class="community-title mono" id="community-song">Whispers</span>
+            </div>
+          </div>
+
+          <form id="comment-form" class="comment-form">
+            <p class="comment-target">
+              commenting on <strong id="comment-song">Whispers</strong>
+            </p>
+            <label class="sr-only" for="comment-name">Your name</label>
+            <input id="comment-name" type="text" maxlength="24" placeholder="Your name (optional)" />
+
+            <label class="sr-only" for="comment-text">Leave a comment</label>
+            <textarea id="comment-text" rows="3" maxlength="250" placeholder="Leave a comment..." required></textarea>
+
+            <button type="submit" class="btn small-btn">Post comment</button>
+          </form>
+
+          <ul id="comment-list" class="comment-list" aria-live="polite"></ul>
+
+          <ol id="tracklist" class="tracklist"></ol>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact" class="site-footer">
+      <div class="container footer-wrap">
+        <div>
+          <p class="section-kicker">Contact</p>
+          <h2>Let’s build something meaningful.</h2>
+        </div>
+        <div class="socials">
+          <a href="https://github.com/tomtom-cmd" target="_blank" rel="noreferrer">GitHub - Main</a>
+          <a href="https://github.com/tomtom-cmd-alt" target="_blank" rel="noreferrer">GitHub - Alt</a>
+          <a href="mailto:bobbyboooy777@gmail.com">Email</a>
+          <a href="https://www.soundcloud.com/user-326669272" target="_blank" rel="noreferrer">Soundcloud</a>
+          <a href="./admin.html">Admin</a>
+        </div>
+      </div>
+      <div class="container footer-bottom">
+        <p>© <span id="year"></span> Thomas Miller - GNU Generic V3</p>
+      </div>
+    </footer>
+
+    <!-- ================= account modal ================= -->
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-label="Account">
+        <button id="auth-close" class="modal-close" type="button" aria-label="Close">×</button>
+        <div class="modal-tabs" role="tablist">
+          <button class="modal-tab active" data-auth-tab="login" type="button">Sign in</button>
+          <button class="modal-tab" data-auth-tab="register" type="button">Create account</button>
+        </div>
+
+        <form id="login-form" class="auth-form" autocomplete="off">
+          <label class="sr-only" for="login-username">Username</label>
+          <input id="login-username" type="text" placeholder="Username" maxlength="20" required />
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" class="btn small-btn">Sign in</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden autocomplete="off">
+          <label class="sr-only" for="reg-username">Username</label>
+          <input id="reg-username" type="text" placeholder="Username (3-20 chars)" maxlength="20" required />
+          <label class="sr-only" for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="Password (6+ chars)" autocomplete="new-password" required />
+          <button type="submit" class="btn small-btn">Create account</button>
+        </form>
+
+        <p class="auth-note muted-note">
+          An account saves your likes across devices, attaches your name to
+          comments, and unlocks your stats everywhere.
+        </p>
+        <p id="auth-error" class="admin-error" hidden></p>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <audio id="audio" preload="metadata"></audio>
+    <script src="./config.js"></script>
+    <script src="./api.js"></script>
+    <script src="./script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="About Thomas Miller — developer and musician sharing music, stems and creative tools."
+    />
+    <script>
+      if (location.hostname.endsWith("github.io")) {
+        window.location.replace("https://my-music-dnog.onrender.com/about");
+      }
+    </script>
+    <title>About | Thomas Miller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob blob-a"></div>
+      <div class="aurora-blob blob-b"></div>
+      <div class="aurora-blob blob-c"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="/" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="/music">Music</a>
+          <a href="/stems">Stems</a>
+          <a href="/live-sets">Live Sets</a>
+          <a href="/about" class="active">About</a>
+          <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
+        </nav>
+        <div class="auth-area" id="auth-area">
+          <button id="signin-btn" class="auth-btn" type="button">Sign in</button>
+          <div id="user-chip" class="user-chip" hidden>
+            <span id="user-avatar" class="avatar" aria-hidden="true"></span>
+            <span id="user-name" class="user-name"></span>
+            <span id="msg-badge" class="msg-badge" hidden></span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </div>
+          <div id="user-menu" class="user-menu">
+            <a id="menu-profile" href="/profile">My profile</a>
+            <a href="/messages">Messages</a>
+            <a id="menu-admin" href="/admin.html" hidden>Admin panel</a>
+            <button id="signout-btn" class="auth-out" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="container narrow">
+          <p class="section-kicker">About</p>
+          <h2>Building with sound and code.</h2>
+          <p>
+            I’m a developer and musician, creating audio experiments, song stems, and creative tools.
+            This page is meant to be a clean place to share work and let people explore the sounds directly.
+          </p>
+          <p>
+            Everything here is available for download and remix, with credit where appropriate depending on the project.
+          </p>
+          <p class="mono hint">contact: bobbyboooy7777@gmail.com</p>
+
+          <div class="actions">
+            <a class="button primary" href="/music">Listen to the tracks</a>
+            <a class="button secondary" href="/stems">Download stems</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact" class="site-footer">
+      <div class="container footer-wrap">
+        <div>
+          <p class="section-kicker">Contact</p>
+          <h2>Let’s build something meaningful.</h2>
+        </div>
+        <div class="socials">
+          <a href="https://github.com/tomtom-cmd" target="_blank" rel="noreferrer">GitHub - Main</a>
+          <a href="https://github.com/tomtom-cmd-alt" target="_blank" rel="noreferrer">GitHub - Alt</a>
+          <a href="mailto:bobbyboooy777@gmail.com">Email</a>
+          <a href="https://www.soundcloud.com/user-326669272" target="_blank" rel="noreferrer">Soundcloud</a>
+          <a href="./admin.html">Admin</a>
+        </div>
+      </div>
+      <div class="container footer-bottom">
+        <p>© <span id="year"></span> Thomas Miller - GNU Generic V3</p>
+      </div>
+    </footer>
+
+    <!-- ================= account modal ================= -->
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-label="Account">
+        <button id="auth-close" class="modal-close" type="button" aria-label="Close">×</button>
+        <div class="modal-tabs" role="tablist">
+          <button class="modal-tab active" data-auth-tab="login" type="button">Sign in</button>
+          <button class="modal-tab" data-auth-tab="register" type="button">Create account</button>
+        </div>
+
+        <form id="login-form" class="auth-form" autocomplete="off">
+          <label class="sr-only" for="login-username">Username</label>
+          <input id="login-username" type="text" placeholder="Username" maxlength="20" required />
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" class="btn small-btn">Sign in</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden autocomplete="off">
+          <label class="sr-only" for="reg-username">Username</label>
+          <input id="reg-username" type="text" placeholder="Username (3-20 chars)" maxlength="20" required />
+          <label class="sr-only" for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="Password (6+ chars)" autocomplete="new-password" required />
+          <button type="submit" class="btn small-btn">Create account</button>
+        </form>
+
+        <p class="auth-note muted-note">
+          An account saves your likes across devices, attaches your name to
+          comments, and unlocks your stats everywhere.
+        </p>
+        <p id="auth-error" class="admin-error" hidden></p>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <script src="./config.js"></script>
+    <script src="./api.js"></script>
+    <script src="./script.js"></script>
+  </body>
+</html>

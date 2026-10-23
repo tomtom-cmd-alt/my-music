@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Direct messages on Thomas Miller's music site." />
+    <script>
+      if (location.hostname.endsWith("github.io")) {
+        window.location.replace("https://my-music-dnog.onrender.com/messages");
+      }
+    </script>
+    <title>Messages | Thomas Miller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob blob-a"></div>
+      <div class="aurora-blob blob-b"></div>
+      <div class="aurora-blob blob-c"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="/" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="/music">Music</a>
+          <a href="/stems">Stems</a>
+          <a href="/live-sets">Live Sets</a>
+          <a href="/about">About</a>
+          <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
+        </nav>
+        <div class="auth-area" id="auth-area">
+          <button id="signin-btn" class="auth-btn" type="button">Sign in</button>
+          <div id="user-chip" class="user-chip" hidden>
+            <span id="user-avatar" class="avatar" aria-hidden="true"></span>
+            <span id="user-name" class="user-name"></span>
+            <span id="msg-badge" class="msg-badge" hidden></span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </div>
+          <div id="user-menu" class="user-menu">
+            <a id="menu-profile" href="/profile">My profile</a>
+            <a href="/messages">Messages</a>
+            <a id="menu-admin" href="/admin.html" hidden>Admin panel</a>
+            <button id="signout-btn" class="auth-out" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <p class="section-kicker">Direct messages</p>
+            <h2>Your inbox</h2>
+          </div>
+
+          <div id="dm-signed-out" class="glass-card dm-note" hidden>
+            <p>Sign in to send and read direct messages.</p>
+            <button class="btn small-btn" id="dm-signin" type="button">Sign in</button>
+          </div>
+
+          <div id="dm-app" class="dm-app" hidden>
+            <aside class="glass-card dm-list-panel">
+              <form id="dm-new-form" class="dm-new-form">
+                <input id="dm-new-user" type="text" maxlength="20" placeholder="Start a chat — username" />
+                <button class="btn small-btn" type="submit">Open</button>
+              </form>
+              <ul id="dm-conversations" class="dm-conversations"></ul>
+            </aside>
+
+            <div class="glass-card dm-thread-panel">
+              <div class="dm-thread-head" id="dm-thread-head">
+                <span class="muted-note">pick a conversation</span>
+              </div>
+              <ul id="dm-thread" class="dm-thread"></ul>
+              <form id="dm-compose" class="dm-compose">
+                <input id="dm-input" type="text" maxlength="1000" placeholder="Type a message…" autocomplete="off" />
+                <button class="btn small-btn" type="submit">Send</button>
+              </form>
+              <p id="dm-blocked" class="muted-note dm-blocked" hidden></p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact" class="site-footer">
+      <div class="container footer-bottom">
+        <p>© <span id="year"></span> Thomas Miller - GNU Generic V3</p>
+      </div>
+    </footer>
+
+    <!-- ================= account modal ================= -->
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-label="Account">
+        <button id="auth-close" class="modal-close" type="button" aria-label="Close">×</button>
+        <div class="modal-tabs" role="tablist">
+          <button class="modal-tab active" data-auth-tab="login" type="button">Sign in</button>
+          <button class="modal-tab" data-auth-tab="register" type="button">Create account</button>
+        </div>
+
+        <form id="login-form" class="auth-form" autocomplete="off">
+          <label class="sr-only" for="login-username">Username</label>
+          <input id="login-username" type="text" placeholder="Username" maxlength="20" required />
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" class="btn small-btn">Sign in</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden autocomplete="off">
+          <label class="sr-only" for="reg-username">Username</label>
+          <input id="reg-username" type="text" placeholder="Username (3-20 chars)" maxlength="20" required />
+          <label class="sr-only" for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="Password (6+ chars)" autocomplete="new-password" required />
+          <button type="submit" class="btn small-btn">Create account</button>
+        </form>
+
+        <p class="auth-note muted-note">
+          An account saves your likes across devices, attaches your name to
+          comments, and unlocks your stats everywhere.
+        </p>
+        <p id="auth-error" class="admin-error" hidden></p>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <script src="./config.js"></script>
+    <script src="./api.js"></script>
+    <script src="./script.js"></script>
+    <script src="./messages.js"></script>
+  </body>
+</html>

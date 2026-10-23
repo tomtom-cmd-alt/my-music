@@ -23,6 +23,7 @@ const tabs = Array.from(document.querySelectorAll(".admin-tab"));
 const tabComments = document.getElementById("tab-comments");
 const tabSongs = document.getElementById("tab-songs");
 const tabUsers = document.getElementById("tab-users");
+const tabMessages = document.getElementById("tab-messages");
 const tabBans = document.getElementById("tab-bans");
 
 const filterSong = document.getElementById("filter-song");
@@ -44,6 +45,8 @@ const addSongStatus = document.getElementById("add-song-status");
 
 const usersBody = document.getElementById("users-body");
 const bansBody = document.getElementById("bans-body");
+const adminMessages = document.getElementById("admin-messages");
+const tabDmCount = document.getElementById("tab-dm-count");
 const addBanForm = document.getElementById("add-ban-form");
 const banValue = document.getElementById("ban-value");
 const banHours = document.getElementById("ban-hours");
@@ -125,11 +128,23 @@ function hueFor(str) {
   return h;
 }
 
-function avatarFor(name) {
+function avatarFor(name, avatarUrl) {
   const span = document.createElement("span");
   span.className = "avatar avatar-small";
-  span.textContent = initialsFor(name);
-  span.style.background = `linear-gradient(135deg, hsl(${hueFor(name)} 70% 45%), hsl(${(hueFor(name) + 60) % 360} 70% 55%))`;
+  if (avatarUrl) {
+    const img = document.createElement("img");
+    img.src = MusicAPI.mediaUrl(avatarUrl);
+    img.alt = "";
+    img.onerror = () => {
+      img.remove();
+      span.textContent = initialsFor(name);
+      span.style.background = `linear-gradient(135deg, hsl(${hueFor(name)} 70% 45%), hsl(${(hueFor(name) + 60) % 360} 70% 55%))`;
+    };
+    span.append(img);
+  } else {
+    span.textContent = initialsFor(name);
+    span.style.background = `linear-gradient(135deg, hsl(${hueFor(name)} 70% 45%), hsl(${(hueFor(name) + 60) % 360} 70% 55%))`;
+  }
   return span;
 }
 
@@ -234,11 +249,13 @@ function renderAll() {
   renderCommentsAdmin();
   renderSongsAdmin();
   renderUsersAdmin();
+  renderMessagesAdmin();
   renderBansAdmin();
 
   tabCommentCount.textContent = overview.comments.length ? String(overview.comments.length) : "";
   tabUserCount.textContent = overview.users.length ? String(overview.users.length) : "";
   tabBanCount.textContent = overview.bans.length ? String(overview.bans.length) : "";
+  tabDmCount.textContent = (overview.messages || []).length ? String((overview.messages || []).length) : "";
   commentsShown.textContent = `${visibleComments().length} of ${overview.comments.length} shown`;
 }
 
@@ -249,6 +266,7 @@ function renderStats() {
     { value: fmtNumber(t.likes), label: "total likes" },
     { value: fmtNumber(t.comments), label: "visible comments" },
     { value: fmtNumber(t.users), label: "accounts" },
+    { value: fmtNumber(t.dms || 0), label: "direct messages" },
     { value: fmtNumber(t.bans), label: "active bans" },
     { value: fmtNumber(overview.songs.length), label: "tracks" }
   ];
@@ -626,10 +644,16 @@ function renderUsersAdmin() {
     const tdName = document.createElement("td");
     const row = document.createElement("div");
     row.className = "user-row";
-    row.append(avatarFor(user.username));
+    row.append(avatarFor(user.username, user.avatar_url));
     const nameWrap = document.createElement("span");
     nameWrap.textContent = user.username;
     row.append(nameWrap);
+    if (user.is_admin) {
+      const chip = document.createElement("span");
+      chip.className = "acct-badge";
+      chip.textContent = "admin";
+      row.append(chip);
+    }
     if (user.banned) {
       const chip = document.createElement("span");
       chip.className = "user-banned-chip";
@@ -647,8 +671,19 @@ function renderUsersAdmin() {
 
     const tdActivity = document.createElement("td");
     tdActivity.className = "mono-small";
-    tdActivity.textContent = `💬 ${fmtNumber(user.comments_posted)} · ♥ ${fmtNumber(user.likes_given)}`;
+    tdActivity.textContent = `💬 ${fmtNumber(user.comments_posted)} · ♥ ${fmtNumber(user.likes_given)} · 👥 ${fmtNumber(user.friend_count)} · ✉ ${fmtNumber(user.dms_sent)}`;
     tr.append(tdActivity);
+
+    const tdProfile = document.createElement("td");
+    tdProfile.className = "mono-small";
+    const visChip = document.createElement("span");
+    visChip.className = "ban-kind-chip " + (user.profile_visibility === "public" ? "ip" : "user");
+    visChip.textContent = user.profile_visibility === "public" ? "all visible" : "private";
+    const dmChip = document.createElement("span");
+    dmChip.className = "ban-kind-chip user";
+    dmChip.textContent = "dm: " + (user.dm_policy || "anyone");
+    tdProfile.append(visChip, document.createTextNode(" "), dmChip);
+    tr.append(tdProfile);
 
     const tdBan = document.createElement("td");
     const controls = document.createElement("div");
@@ -728,6 +763,90 @@ function renderUsersAdmin() {
     tdBan.append(controls);
     tr.append(tdBan);
     usersBody.append(tr);
+  });
+}
+
+/* ---------------- messages tab (DM moderation) ---------------- */
+
+function renderMessagesAdmin() {
+  adminMessages.innerHTML = "";
+  const list = overview.messages || [];
+
+  if (!list.length) {
+    const empty = document.createElement("li");
+    empty.className = "comment-empty";
+    empty.textContent = "No direct messages have been sent yet.";
+    adminMessages.append(empty);
+    return;
+  }
+
+  list.forEach((msg) => {
+    const item = document.createElement("li");
+    item.className = "comment-item admin-comment";
+
+    const head = document.createElement("div");
+    head.className = "admin-comment-head";
+
+    const meta = document.createElement("div");
+    meta.className = "comment-who";
+    meta.append(avatarFor(msg.sender_username));
+
+    const sender = document.createElement("strong");
+    sender.textContent = msg.sender_username || "?";
+    meta.append(sender);
+
+    const arrow = document.createElement("span");
+    arrow.className = "dm-arrow";
+    arrow.textContent = "→";
+    meta.append(arrow);
+
+    const recipient = document.createElement("strong");
+    recipient.textContent = msg.recipient_username || "?";
+    meta.append(recipient);
+
+    const time = document.createElement("span");
+    time.className = "comment-time";
+    time.textContent = fmtDate(msg.created_at);
+    meta.append(time);
+
+    const unread = document.createElement("span");
+    unread.className = "status-badge " + (msg.read_at ? "approved" : "hidden");
+    unread.textContent = msg.read_at ? "read" : "unread";
+    head.append(meta, unread);
+
+    const text = document.createElement("p");
+    text.className = "admin-comment-text";
+    text.textContent = msg.text;
+
+    const actions = document.createElement("div");
+    actions.className = "admin-comment-actions";
+
+    const viewBtn = document.createElement("a");
+    viewBtn.className = "admin-btn";
+    viewBtn.href = "/messages?to=" + encodeURIComponent(msg.sender_username);
+    viewBtn.textContent = "Open DM";
+    actions.append(viewBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "admin-btn danger";
+    delBtn.type = "button";
+    delBtn.textContent = "Delete";
+    delBtn.addEventListener("click", async () => {
+      if (!confirm("Delete this message permanently?")) return;
+      delBtn.disabled = true;
+      try {
+        await MusicAPI.adminDeleteMessage(token, msg.id);
+        overview.messages = (overview.messages || []).filter((m) => m.id !== msg.id);
+        renderMessagesAdmin();
+      } catch (error) {
+        showToast("Failed: " + error.message, "error");
+        delBtn.disabled = false;
+      }
+    });
+    actions.append(delBtn);
+
+    item.append(head, text, actions);
+    adminMessages.append(item);
   });
 }
 
@@ -866,6 +985,7 @@ tabs.forEach((tab) => {
     tabComments.hidden = target !== "comments";
     tabSongs.hidden = target !== "songs";
     tabUsers.hidden = target !== "users";
+    tabMessages.hidden = target !== "messages";
     tabBans.hidden = target !== "bans";
   });
 });

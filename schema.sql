@@ -88,3 +88,37 @@ INSERT OR IGNORE INTO songs (song_name, display_name) VALUES
 
 INSERT OR IGNORE INTO listens (song_name, count) VALUES ('whispers', 10);
 INSERT OR IGNORE INTO likes (song_name, count) VALUES ('whispers', 7);
+
+-- v4 additions: profiles, friends, DMs
+-- (users gains avatar_url, bg_url, bio, profile_visibility, dm_policy via
+--  ALTER TABLE migrations in server.js)
+
+CREATE TABLE IF NOT EXISTS friends (
+  user_id TEXT NOT NULL,
+  friend_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, friend_id)
+);
+
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id TEXT PRIMARY KEY,
+  from_id TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT NOT NULL,
+  recipient_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  read_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests(to_id);
+
+INSERT OR IGNORE INTO songs (song_name, display_name) VALUES
+  ('when-i-think-about-you', 'When I Think About You');

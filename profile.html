@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Profiles on Thomas Miller's music site." />
+    <script>
+      if (location.hostname.endsWith("github.io")) {
+        window.location.replace("https://my-music-dnog.onrender.com/profile");
+      }
+    </script>
+    <title>Profile | Thomas Miller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob blob-a"></div>
+      <div class="aurora-blob blob-b"></div>
+      <div class="aurora-blob blob-c"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a href="/" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="/music">Music</a>
+          <a href="/stems">Stems</a>
+          <a href="/live-sets">Live Sets</a>
+          <a href="/about">About</a>
+          <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
+        </nav>
+        <div class="auth-area" id="auth-area">
+          <button id="signin-btn" class="auth-btn" type="button">Sign in</button>
+          <div id="user-chip" class="user-chip" hidden>
+            <span id="user-avatar" class="avatar" aria-hidden="true"></span>
+            <span id="user-name" class="user-name"></span>
+            <span id="msg-badge" class="msg-badge" hidden></span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </div>
+          <div id="user-menu" class="user-menu">
+            <a id="menu-profile" href="/profile">My profile</a>
+            <a href="/messages">Messages</a>
+            <a id="menu-admin" href="/admin.html" hidden>Admin panel</a>
+            <button id="signout-btn" class="auth-out" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="container profile-container">
+          <!-- profile banner -->
+          <div class="profile-card glass-card">
+            <div class="profile-bg" id="profile-bg"></div>
+            <div class="profile-head">
+              <div class="profile-avatar-wrap" id="profile-avatar-wrap">
+                <span class="avatar profile-avatar" id="profile-avatar"></span>
+                <button id="avatar-change" class="profile-img-btn" type="button" hidden title="Change profile picture">📷</button>
+              </div>
+              <div class="profile-id">
+                <h1 id="profile-username">…</h1>
+                <div class="profile-badges">
+                  <span id="badge-admin" class="acct-badge" hidden>admin</span>
+                  <span id="badge-visibility" class="vis-badge" hidden></span>
+                </div>
+                <p id="profile-bio" class="profile-bio"></p>
+                <p id="profile-meta" class="muted-note mono"></p>
+              </div>
+              <div class="profile-actions" id="profile-actions">
+                <button id="btn-add-friend" class="btn small-btn" type="button" hidden>Add friend</button>
+                <button id="btn-accept-incoming" class="btn small-btn" type="button" hidden>Accept request</button>
+                <button id="btn-remove-friend" class="btn small-btn secondary" type="button" hidden>Remove friend</button>
+                <a id="btn-message" class="btn small-btn" href="/messages" hidden>✉ Message</a>
+                <button id="btn-edit-profile" class="btn small-btn secondary" type="button" hidden>Edit profile</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- edit panel (self only) -->
+          <div id="edit-panel" class="glass-card profile-edit" hidden>
+            <h3>Edit your profile</h3>
+            <div class="edit-grid">
+              <div class="edit-field">
+                <span class="field-label">Bio <span class="mono" id="bio-count">0/300</span></span>
+                <textarea id="edit-bio" rows="3" maxlength="300" placeholder="Tell people who you are…"></textarea>
+              </div>
+              <div class="edit-field">
+                <span class="field-label">Profile picture</span>
+                <div class="edit-file-row">
+                  <label class="file-label">📷 Choose image
+                    <input id="edit-avatar" type="file" accept="image/*" />
+                  </label>
+                  <button id="avatar-clear" class="admin-btn" type="button">Remove</button>
+                </div>
+              </div>
+              <div class="edit-field">
+                <span class="field-label">Profile background</span>
+                <div class="edit-file-row">
+                  <label class="file-label">🖼️ Choose image
+                    <input id="edit-bg" type="file" accept="image/*" />
+                  </label>
+                  <button id="bg-clear" class="admin-btn" type="button">Remove</button>
+                </div>
+              </div>
+              <div class="edit-field">
+                <span class="field-label">Profile visibility</span>
+                <select id="edit-visibility">
+                  <option value="private">Private — only you and admins see your comments &amp; friends</option>
+                  <option value="public">All Visible — anyone can see your comments &amp; friends</option>
+                </select>
+              </div>
+              <div class="edit-field">
+                <span class="field-label">Who can DM you?</span>
+                <select id="edit-dm">
+                  <option value="anyone">Anyone</option>
+                  <option value="friends">Only friends</option>
+                  <option value="nobody">No one (admins can always reach you)</option>
+                </select>
+              </div>
+            </div>
+            <div class="edit-actions">
+              <button id="edit-save" class="btn small-btn" type="button">Save changes</button>
+              <button id="edit-cancel" class="btn small-btn secondary" type="button">Cancel</button>
+              <span id="edit-status" class="muted-note mono"></span>
+            </div>
+          </div>
+
+          <div class="profile-columns">
+            <!-- friends -->
+            <div id="friends-panel" class="glass-card profile-panel">
+              <h3>Friends <span id="friend-count" class="tab-count mono"></span></h3>
+              <div id="friend-requests" class="friend-requests" hidden>
+                <h4>Incoming requests</h4>
+                <ul id="friend-request-list" class="friend-list"></ul>
+              </div>
+              <ul id="friend-list" class="friend-list"></ul>
+              <p id="friends-locked" class="muted-note" hidden>
+                This profile is private — friends are only visible when the profile is set to
+                <span class="mono">All Visible</span> (or for admins).
+              </p>
+            </div>
+
+            <!-- comments -->
+            <div id="comments-panel" class="glass-card profile-panel">
+              <h3>Comments</h3>
+              <ul id="profile-comment-list" class="comment-list"></ul>
+              <p id="comments-locked" class="muted-note" hidden>
+                This profile is private — comments are only visible when the profile is set to
+                <span class="mono">All Visible</span> (or for admins).
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact" class="site-footer">
+      <div class="container footer-bottom">
+        <p>© <span id="year"></span> Thomas Miller - GNU Generic V3</p>
+      </div>
+    </footer>
+
+    <!-- ================= account modal ================= -->
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="modal glass-card" role="dialog" aria-modal="true" aria-label="Account">
+        <button id="auth-close" class="modal-close" type="button" aria-label="Close">×</button>
+        <div class="modal-tabs" role="tablist">
+          <button class="modal-tab active" data-auth-tab="login" type="button">Sign in</button>
+          <button class="modal-tab" data-auth-tab="register" type="button">Create account</button>
+        </div>
+
+        <form id="login-form" class="auth-form" autocomplete="off">
+          <label class="sr-only" for="login-username">Username</label>
+          <input id="login-username" type="text" placeholder="Username" maxlength="20" required />
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" class="btn small-btn">Sign in</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden autocomplete="off">
+          <label class="sr-only" for="reg-username">Username</label>
+          <input id="reg-username" type="text" placeholder="Username (3-20 chars)" maxlength="20" required />
+          <label class="sr-only" for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="Password (6+ chars)" autocomplete="new-password" required />
+          <button type="submit" class="btn small-btn">Create account</button>
+        </form>
+
+        <p class="auth-note muted-note">
+          An account saves your likes across devices, attaches your name to
+          comments, and unlocks your stats everywhere.
+        </p>
+        <p id="auth-error" class="admin-error" hidden></p>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <script src="./config.js"></script>
+    <script src="./api.js"></script>
+    <script src="./script.js"></script>
+    <script src="./profile.js"></script>
+  </body>
+</html>

@@ -14,7 +14,7 @@
         window.location.replace("https://my-music-dnog.onrender.com/");
       }
     </script>
-    <title>Thomas Miller | Music & Stems</title>
+    <title>Thomas Miller | Music &amp; Stems</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -33,12 +33,12 @@
 
     <header class="site-header">
       <div class="container nav-wrap">
-        <a href="https://tomtom-cmd-alt.github.io" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
+        <a href="/" class="brand" aria-label="Tom Tom home">Tom&nbsp;Tom<span class="brand-dot">.</span></a>
         <nav class="main-nav" aria-label="Main navigation">
-          <a href="#music">Music</a>
-          <a href="#stems">Stems</a>
-          <a href="#live-sets">Live Sets</a>
-          <a href="#about">About</a>
+          <a href="/music">Music</a>
+          <a href="/stems">Stems</a>
+          <a href="/live-sets">Live Sets</a>
+          <a href="/about">About</a>
           <a href="https://github.com/tomtom-cmd-alt">GitHub</a>
         </nav>
         <div class="auth-area" id="auth-area">
@@ -46,7 +46,14 @@
           <div id="user-chip" class="user-chip" hidden>
             <span id="user-avatar" class="avatar" aria-hidden="true"></span>
             <span id="user-name" class="user-name"></span>
-            <button id="signout-btn" class="auth-out" type="button" title="Sign out">⏻</button>
+            <span id="msg-badge" class="msg-badge" hidden></span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </div>
+          <div id="user-menu" class="user-menu">
+            <a id="menu-profile" href="/profile">My profile</a>
+            <a href="/messages">Messages</a>
+            <a id="menu-admin" href="/admin.html" hidden>Admin panel</a>
+            <button id="signout-btn" class="auth-out" type="button">Sign out</button>
           </div>
         </div>
       </div>
@@ -63,14 +70,14 @@
             </p>
 
             <div class="actions">
-              <a class="button primary" href="#music">Listen now</a>
-              <a class="button secondary" href="#about">About this page</a>
+              <a class="button primary" href="/music">Listen now</a>
+              <a class="button secondary" href="/about">About this page</a>
             </div>
 
             <ul class="mini-stats" aria-label="Key statistics">
               <li><strong>16</strong><span>Stems</span></li>
               <li><strong>11</strong><span>Live sets</span></li>
-              <li><strong id="hero-song-count">10</strong><span>Tracks</span></li>
+              <li><strong id="hero-song-count">11</strong><span>Tracks</span></li>
             </ul>
           </div>
 
@@ -102,167 +109,54 @@
         </div>
       </section>
 
-      <section id="music" class="section">
+      <section class="section">
         <div class="container">
           <div class="section-heading">
-            <p class="section-kicker">Music</p>
-            <h2>Listen in-browser</h2>
+            <p class="section-kicker">Explore</p>
+            <h2>Four corners of the archive</h2>
           </div>
-
-          <div class="player" id="player-card">
-            <div class="player-main">
-              <div class="cover-wrap">
-                <img id="np-cover" class="np-cover" alt="" aria-hidden="true" />
-                <div class="cover-fallback" id="cover-fallback" aria-hidden="true"></div>
-                <div class="eq on-cover" id="np-eq">
-                  <span></span><span></span><span></span><span></span><span></span>
-                </div>
-              </div>
-
-              <div class="player-body">
-                <div class="now-playing">
-                  <div class="np-line">
-                    <span id="np-title">select a track</span>
-                    <span class="np-badge mono" id="np-source-badge" hidden>new</span>
-                  </div>
-                  <span id="np-time" class="mono">0:00 / 0:00</span>
-                </div>
-
-                <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
-
-                <p id="np-description" class="np-description" hidden></p>
-
-                <div class="player-meta">
-                  <div class="controls">
-                    <button id="prev" aria-label="Previous track">⏮</button>
-                    <button id="play" class="play-btn" aria-label="Play">▶</button>
-                    <button id="next" aria-label="Next track">⏭</button>
-                    <button id="like-btn" class="like-btn" type="button" aria-pressed="false" title="Like this track">♡</button>
-                  </div>
-                  <div class="community-stats" aria-label="Per-track community stats">
-                    <div class="community-stat"><span id="song-listens">0</span><small>plays</small></div>
-                    <div class="community-stat"><span id="song-likes">0</span><small>likes</small></div>
-                    <div class="community-stat"><span id="song-comments">0</span><small>comments</small></div>
-                  </div>
-                  <div class="volume">
-                    <span aria-hidden="true">🔊</span>
-                    <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volume" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="community-head">
-              <span id="api-mode" class="api-mode" title="Where listens, likes and comments are stored">
-                <span class="mode-dot"></span>
-                <span id="api-mode-text">checking&hellip;</span>
-              </span>
-              <span class="community-title mono" id="community-song">Whispers</span>
-            </div>
-          </div>
-
-          <form id="comment-form" class="comment-form">
-            <p class="comment-target">
-              commenting on <strong id="comment-song">Whispers</strong>
-            </p>
-            <label class="sr-only" for="comment-name">Your name</label>
-            <input id="comment-name" type="text" maxlength="24" placeholder="Your name (optional)" />
-
-            <label class="sr-only" for="comment-text">Leave a comment</label>
-            <textarea id="comment-text" rows="3" maxlength="250" placeholder="Leave a comment..." required></textarea>
-
-            <button type="submit" class="btn small-btn">Post comment</button>
-          </form>
-
-          <ul id="comment-list" class="comment-list" aria-live="polite"></ul>
-
-          <ol id="tracklist" class="tracklist"></ol>
-        </div>
-      </section>
-
-      <section id="stems" class="section alt">
-        <div class="container">
-          <div class="section-heading">
-            <p class="section-kicker">Stems</p>
-            <h2>Downloadable packs</h2>
-          </div>
-
-          <p>
-            Individual stems per song. Remix, sample, mangle — credit required.
-            (CC0 - Attribution Req.)
-          </p>
-
-          <div class="zip-bar">
-            <button id="zip-all" class="btn">↓ Download all stems (.zip)</button>
-            <span id="zip-status" class="muted-note mono"></span>
-          </div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Stem</th>
-                  <th>Size</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="stems-body"></tbody>
-            </table>
+          <div class="hub-grid">
+            <a class="glass-card hub-card" href="/music">
+              <span class="hub-icon">🎧</span>
+              <h3>Music</h3>
+              <p>Stream every track in the browser, like songs, and drop comments on each release.</p>
+              <span class="hub-cta mono">/music →</span>
+            </a>
+            <a class="glass-card hub-card" href="/stems">
+              <span class="hub-icon">🎛️</span>
+              <h3>Stems</h3>
+              <p>16 individual stems from <span class="mono">Whispers</span> — grab the pack or pick parts.</p>
+              <span class="hub-cta mono">/stems →</span>
+            </a>
+            <a class="glass-card hub-card" href="/live-sets">
+              <span class="hub-icon">🎚️</span>
+              <h3>Live Sets</h3>
+              <p>The Ableton Live projects — main set plus every auto-save, straight from the studio.</p>
+              <span class="hub-cta mono">/live-sets →</span>
+            </a>
+            <a class="glass-card hub-card" href="/about">
+              <span class="hub-icon">👋</span>
+              <h3>About</h3>
+              <p>Who makes this, why it's free to remix, and how to get in touch.</p>
+              <span class="hub-cta mono">/about →</span>
+            </a>
           </div>
         </div>
       </section>
 
-      <section id="live-sets" class="section">
-        <div class="container">
-          <div class="section-heading">
-            <p class="section-kicker">Ableton Live Sets</p>
-            <h2>Open the projects</h2>
-          </div>
-
-          <p>
-            Every Ableton Live set for <span class="mono">Whispers</span> — the
-            main project plus all auto-save backups, straight from the studio.
-            Open, tweak, rebuild. Requires Ableton Live; samples live in the
-            Drive folder.
-          </p>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Live Set</th>
-                  <th>Size</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="sets-body"></tbody>
-            </table>
-          </div>
-
-          <p class="hint-2 mono">
-            full project folder:
-            <a
-              href="https://drive.google.com/drive/folders/1N_9eQoUQNAYc5Cf6uyjaO78Po58L5oPT?usp=sharing"
-              target="_blank"
-              rel="noreferrer"
-              >Whispers Project on Drive ↗</a
-            >
-          </p>
-        </div>
-      </section>
-
-      <section id="about" class="section">
+      <section class="section alt">
         <div class="container narrow">
-          <p class="section-kicker">About</p>
-          <h2>Building with sound and code.</h2>
+          <p class="section-kicker">Community</p>
+          <h2>Make it yours.</h2>
           <p>
-            I’m a developer and musician, creating audio experiments, song stems, and creative tools.
-            This page is meant to be a clean place to share work and let people explore the sounds directly.
+            Create an account to keep your likes everywhere, comment with your name, set up a
+            profile with a custom picture, background and bio, add friends, and send direct
+            messages — with full control over who can reach you.
           </p>
-          <p>
-            Everything here is available for download and remix, with credit where appropriate depending on the project.
-          </p>
-          <p class="mono hint">contact: bobbyboooy7777@gmail.com</p>
+          <div class="actions">
+            <a class="button primary" href="/profile">Your profile</a>
+            <a class="button secondary" href="/messages">Messages</a>
+          </div>
         </div>
       </section>
     </main>
@@ -321,7 +215,6 @@
 
     <div id="toast-root" class="toast-root" aria-live="polite"></div>
 
-    <audio id="audio" preload="metadata"></audio>
     <script src="./config.js"></script>
     <script src="./api.js"></script>
     <script src="./script.js"></script>

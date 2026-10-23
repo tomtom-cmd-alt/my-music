@@ -498,6 +498,16 @@ function uploadedFiles(req) {
   return out;
 }
 
+// Profile images (avatar / background) — small images only.
+const imageUpload = multer({
+  storage,
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\//i.test(file.mimetype)) return cb(null, true);
+    cb(new Error("only image files are allowed there"));
+  }
+});
+
 function publicFileUrl(file) {
   return file ? "/uploads/" + file.filename : null;
 }
@@ -550,7 +560,10 @@ app.get("/api/health", (_req, res) => {
     auto_approve: AUTO_APPROVE,
     accounts: true,
     bans: true,
-    version: 3,
+    profiles: true,
+    friends: true,
+    dms: true,
+    version: 4,
     github: GITHUB_ENABLED,
     password_login: !PASSWORD_DISABLED
   });
@@ -658,22 +671,23 @@ app.get("/api/comments", async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
 
     let rows;
+    const authorJoin = `LEFT JOIN users u ON u.id = c.user_id`;
     if (req.query.song) {
       const song = normalizeSong(req.query.song);
       rows = await q(db.all(
-        `SELECT id, song_name, author, text, created_at, user_id
-           FROM comments
-          WHERE song_name = ? AND status = 'approved'
-          ORDER BY created_at DESC
+        `SELECT c.id, c.song_name, c.author, c.text, c.created_at, c.user_id, u.avatar_url AS avatar_url
+           FROM comments c ${authorJoin}
+          WHERE c.song_name = ? AND c.status = 'approved'
+          ORDER BY c.created_at DESC
           LIMIT ?`,
         [song, limit]
       ));
     } else {
       rows = await q(db.all(
-        `SELECT id, song_name, author, text, created_at, user_id
-           FROM comments
-          WHERE status = 'approved'
-          ORDER BY created_at DESC
+        `SELECT c.id, c.song_name, c.author, c.text, c.created_at, c.user_id, u.avatar_url AS avatar_url
+           FROM comments c ${authorJoin}
+          WHERE c.status = 'approved'
+          ORDER BY c.created_at DESC
           LIMIT ?`,
         [limit]
       ));
@@ -722,7 +736,13 @@ app.post("/api/comments", async (req, res) => {
     ));
 
     lastCommentAt.set(key, Date.now());
-    res.status(201).json({ comment, song, ...(await getSongStats(song)) });
+    const stats = await getSongStats(song);
+    const stored = await q(db.get("SELECT avatar_url FROM users WHERE id = ?", [req.user ? req.user.id : ""]));
+    res.status(201).json({
+      comment: { ...comment, avatar_url: comment.user_id ? (stored ? stored.avatar_url : null) : null },
+      song,
+      ...stats
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -732,8 +752,59 @@ app.post("/api/comments", async (req, res) => {
 /* Public API — accounts                                              */
 /* ------------------------------------------------------------------ */
 
+function isAdminUser(user) {
+  return Boolean(user && ADMIN_GITHUB_USERS.includes(String(user.username || "").toLowerCase()));
+}
+
 function publicUser(row) {
-  return { id: row.id, username: row.username, created_at: row.created_at };
+  return {
+    id: row.id,
+    username: row.username,
+    created_at: row.created_at,
+    avatar_url: row.avatar_url || null,
+    bg_url: row.bg_url || null,
+    bio: row.bio || "",
+    profile_visibility: row.profile_visibility || "private",
+    dm_policy: row.dm_policy || "anyone",
+    is_admin: isAdminUser({ username: row.username })
+  };
+}
+
+async function getUserByUsername(username) {
+  return q(db.get("SELECT * FROM users WHERE username = ? COLLATE NOCASE", [String(username || "").trim()]));
+}
+
+async function areFriends(a, b) {
+  if (!a || !b) return false;
+  const row = await q(db.get(
+    "SELECT 1 AS x FROM friends WHERE user_id = ? AND friend_id = ?",
+    [a, b]
+  ));
+  return Boolean(row);
+}
+
+async function friendIdsOf(userId) {
+  const rows = await q(db.all(
+    `SELECT f.friend_id AS id, u.username AS username, u.avatar_url AS avatar_url
+       FROM friends f JOIN users u ON u.id = f.friend_id
+      WHERE f.user_id = ?
+      ORDER BY u.username`,
+    [userId]
+  ));
+  return rows;
+}
+
+// Can `sender` DM `recipientRow`? Admins bypass every policy.
+async function canDm(sender, recipientRow) {
+  if (!sender || !recipientRow) return { ok: false, error: "not signed in" };
+  if (isAdminUser(sender)) return { ok: true };
+  if (recipientRow.id === sender.id) return { ok: false, error: "you cannot DM yourself" };
+  const policy = recipientRow.dm_policy || "anyone";
+  if (policy === "anyone") return { ok: true };
+  if (policy === "friends" && (await areFriends(sender.id, recipientRow.id))) return { ok: true };
+  return { ok: false, error: policy === "friends"
+    ? "this person only accepts DMs from friends"
+    : "this person doesn't accept DMs (admins can still reach them)" };
 }
 
 app.post("/api/users/register", async (req, res) => {
@@ -770,7 +841,8 @@ app.post("/api/users/register", async (req, res) => {
     ));
 
     const session = await createSession(id);
-    res.status(201).json({ token: session.token, expires_in_ms: SESSION_TTL_MS, user: { id, username, created_at: new Date().toISOString() } });
+    const created = { id, username, created_at: new Date().toISOString() };
+    res.status(201).json({ token: session.token, expires_in_ms: SESSION_TTL_MS, user: publicUser({ ...created }) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -815,10 +887,420 @@ app.get("/api/me", async (req, res) => {
       "SELECT song_name FROM likes_by WHERE user_id = ?",
       [req.user.id]
     ));
+    const full = await q(db.get("SELECT * FROM users WHERE id = ?", [req.user.id]));
+    const pending = await q(db.get(
+      "SELECT COUNT(*) AS n FROM friend_requests WHERE to_id = ?",
+      [req.user.id]
+    ));
     res.json({
-      user: { ...req.user, banned: ban ? banPayload(ban) : null },
-      likes: likes.map((r) => r.song_name)
+      user: {
+        ...req.user,
+        ...(full ? publicUser(full) : {}),
+        banned: ban ? banPayload(ban) : null
+      },
+      likes: likes.map((r) => r.song_name),
+      friend_requests: Number(pending ? pending.n : 0)
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Profiles (avatar / background / bio / visibility / DM policy)       */
+/* ------------------------------------------------------------------ */
+
+const DM_COOLDOWN_MS = 3000;
+const lastDmAt = new Map();          // user id -> timestamp
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  for (const [key, ts] of lastDmAt) if (ts < cutoff) lastDmAt.delete(key);
+}, 10 * 60 * 1000).unref();
+
+async function deleteProfileFile(fileUrl) {
+  if (!fileUrl || !fileUrl.startsWith("/uploads/")) return;
+  const name = path.basename(fileUrl);
+  if (!name || name.includes("..")) return;
+  fs.unlink(path.join(UPLOAD_DIR, name), () => {});
+}
+
+app.get("/api/users/:username", async (req, res) => {
+  try {
+    const row = await getUserByUsername(req.params.username);
+    if (!row) return res.status(404).json({ error: "no such user" });
+
+    const viewer = req.user;
+    const admin = isAdminUser(viewer);
+    const isSelf = Boolean(viewer && viewer.id === row.id);
+    const visibility = row.profile_visibility || "private";
+    const canSee = isSelf || admin || visibility === "public";
+
+    let friends = null;
+    let comments = null;
+    let friend_count = 0;
+    if (canSee) {
+      friends = await friendIdsOf(row.id);
+      friend_count = friends.length;
+      comments = await q(db.all(
+        `SELECT c.id, c.song_name, c.text, c.created_at, c.status
+           FROM comments c
+          WHERE c.user_id = ?
+          ORDER BY c.created_at DESC
+          LIMIT 40`,
+        [row.id]
+      ));
+    } else {
+      const n = await q(db.get("SELECT COUNT(*) AS n FROM friends WHERE user_id = ?", [row.id]));
+      friend_count = Number(n ? n.n : 0);
+    }
+
+    const relationship = isSelf
+      ? "self"
+      : admin ? "admin"
+      : (viewer && (await areFriends(viewer.id, row.id))) ? "friends" : "none";
+
+    // Incoming pending request from this profile to me (for an Add-friend button state).
+    let incoming_request = null;
+    if (viewer && !isSelf) {
+      incoming_request = await q(db.get(
+        "SELECT id, created_at FROM friend_requests WHERE from_id = ? AND to_id = ?",
+        [row.id, viewer.id]
+      )) || null;
+    }
+    let outgoing_request = null;
+    if (viewer && !isSelf) {
+      outgoing_request = await q(db.get(
+        "SELECT id, created_at FROM friend_requests WHERE from_id = ? AND to_id = ?",
+        [viewer.id, row.id]
+      )) || null;
+    }
+
+    res.json({
+      user: {
+        id: row.id,
+        username: row.username,
+        created_at: row.created_at,
+        avatar_url: row.avatar_url || null,
+        bg_url: row.bg_url || null,
+        bio: row.bio || "",
+        profile_visibility: visibility,
+        dm_policy: row.dm_policy || "anyone",
+        is_admin: isAdminUser({ username: row.username })
+      },
+      viewer: {
+        is_self: isSelf,
+        is_admin: admin,
+        signed_in: Boolean(viewer),
+        relationship,
+        can_see_details: canSee,
+        can_dm: viewer && !isSelf ? (await canDm(viewer, row)).ok : false,
+        incoming_request,
+        outgoing_request
+      },
+      friends,
+      friend_count,
+      comments
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/profile", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const updates = {};
+    if (req.body?.bio !== undefined) {
+      updates.bio = String(req.body.bio).trim().slice(0, 300);
+    }
+    if (req.body?.profile_visibility !== undefined) {
+      const v = String(req.body.profile_visibility);
+      if (!["private", "public"].includes(v)) {
+        return res.status(400).json({ error: "profile_visibility must be 'private' or 'public'" });
+      }
+      updates.profile_visibility = v;
+    }
+    if (req.body?.dm_policy !== undefined) {
+      const v = String(req.body.dm_policy);
+      if (!["anyone", "friends", "nobody"].includes(v)) {
+        return res.status(400).json({ error: "dm_policy must be 'anyone', 'friends' or 'nobody'" });
+      }
+      updates.dm_policy = v;
+    }
+    const keys = Object.keys(updates);
+    if (!keys.length) return res.status(400).json({ error: "nothing to update" });
+    const setSql = keys.map((k) => `${k} = ?`).join(", ");
+    await q(db.run(`UPDATE users SET ${setSql} WHERE id = ?`, [...keys.map((k) => updates[k]), req.user.id]));
+    const row = await q(db.get("SELECT * FROM users WHERE id = ?", [req.user.id]));
+    res.json({ user: publicUser(row) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+async function setProfileImage(req, res, column) {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const row = await q(db.get("SELECT * FROM users WHERE id = ?", [req.user.id]));
+    const old = column === "avatar_url" ? row.avatar_url : row.bg_url;
+    if (req.file) {
+      await q(db.run(`UPDATE users SET ${column} = ? WHERE id = ?`, [
+        "/uploads/" + req.file.filename, req.user.id
+      ]));
+      if (old) await deleteProfileFile(old);
+    } else {
+      // no file → clear the image
+      await q(db.run(`UPDATE users SET ${column} = NULL WHERE id = ?`, [req.user.id]));
+      if (old) await deleteProfileFile(old);
+    }
+    const fresh = await q(db.get("SELECT * FROM users WHERE id = ?", [req.user.id]));
+    res.json({ user: publicUser(fresh) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+app.post("/api/profile/avatar", imageUpload.single("avatar"), (req, res) => setProfileImage(req, res, "avatar_url"));
+app.post("/api/profile/bg", imageUpload.single("bg"), (req, res) => setProfileImage(req, res, "bg_url"));
+app.delete("/api/profile/avatar", (req, res) => { req.file = null; setProfileImage(req, res, "avatar_url"); });
+app.delete("/api/profile/bg", (req, res) => { req.file = null; setProfileImage(req, res, "bg_url"); });
+
+/* ------------------------------------------------------------------ */
+/* Friends                                                            */
+/* ------------------------------------------------------------------ */
+
+app.get("/api/friends", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const friends = await friendIdsOf(req.user.id);
+    const requests = await q(db.all(
+      `SELECT r.id, r.created_at, u.id AS from_id, u.username AS from_username, u.avatar_url AS from_avatar
+         FROM friend_requests r JOIN users u ON u.id = r.from_id
+        WHERE r.to_id = ?
+        ORDER BY r.created_at DESC`,
+      [req.user.id]
+    ));
+    const outgoing = await q(db.all(
+      `SELECT r.id, r.created_at, u.id AS to_id, u.username AS to_username
+         FROM friend_requests r JOIN users u ON u.id = r.to_id
+        WHERE r.from_id = ?
+        ORDER BY r.created_at DESC`,
+      [req.user.id]
+    ));
+    res.json({ friends, requests, outgoing });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/friends/request", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  if (!(await enforceNotBanned(req, res))) return;
+  try {
+    const target = await getUserByUsername(req.body?.username);
+    if (!target) return res.status(404).json({ error: "no such user" });
+    if (target.id === req.user.id) return res.status(400).json({ error: "you cannot add yourself" });
+
+    if (await areFriends(req.user.id, target.id)) {
+      return res.status(409).json({ error: "you are already friends" });
+    }
+
+    // If they already asked me — accept that request instead.
+    const reverse = await q(db.get(
+      "SELECT * FROM friend_requests WHERE from_id = ? AND to_id = ?",
+      [target.id, req.user.id]
+    ));
+    if (reverse) {
+      await q(db.run("DELETE FROM friend_requests WHERE id = ?", [reverse.id]));
+      const now = new Date().toISOString();
+      await q(db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", [req.user.id, target.id, now]));
+      await q(db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", [target.id, req.user.id, now]));
+      return res.json({ ok: true, status: "friends" });
+    }
+
+    const existing = await q(db.get(
+      "SELECT id FROM friend_requests WHERE from_id = ? AND to_id = ?",
+      [req.user.id, target.id]
+    ));
+    if (existing) return res.status(409).json({ error: "request already sent" });
+
+    const id = crypto.randomUUID();
+    await q(db.run(
+      "INSERT INTO friend_requests (id, from_id, to_id, created_at) VALUES (?, ?, ?, ?)",
+      [id, req.user.id, target.id, new Date().toISOString()]
+    ));
+    res.status(201).json({ ok: true, status: "requested", id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/friends/accept", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const request = await q(db.get("SELECT * FROM friend_requests WHERE id = ?", [String(req.body?.id || "")]));
+    if (!request || request.to_id !== req.user.id) return res.status(404).json({ error: "no such request" });
+
+    const now = new Date().toISOString();
+    await q(db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", [req.user.id, request.from_id, now]));
+    await q(db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", [request.from_id, req.user.id, now]));
+    await q(db.run("DELETE FROM friend_requests WHERE id = ?", [request.id]));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/friends/decline", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    await q(db.run("DELETE FROM friend_requests WHERE id = ? AND to_id = ?", [String(req.body?.id || ""), req.user.id]));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/friends/:username", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const target = await getUserByUsername(req.params.username);
+    if (!target) return res.status(404).json({ error: "no such user" });
+    await q(db.run("DELETE FROM friends WHERE user_id = ? AND friend_id = ?", [req.user.id, target.id]));
+    await q(db.run("DELETE FROM friends WHERE user_id = ? AND friend_id = ?", [target.id, req.user.id]));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Direct messages                                                    */
+/* ------------------------------------------------------------------ */
+
+app.get("/api/messages/unread", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const row = await q(db.get(
+      "SELECT COUNT(*) AS n FROM messages WHERE recipient_id = ? AND read_at IS NULL",
+      [req.user.id]
+    ));
+    res.json({ unread: Number(row ? row.n : 0) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/messages/conversations", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const rows = await q(db.all(
+      `SELECT m.id, m.sender_id, m.recipient_id, m.text, m.created_at, m.read_at
+         FROM messages m
+        WHERE m.sender_id = ? OR m.recipient_id = ?
+        ORDER BY m.created_at DESC
+        LIMIT 1000`,
+      [req.user.id, req.user.id]
+    ));
+
+    const convos = new Map();
+    for (const m of rows) {
+      const partnerId = m.sender_id === req.user.id ? m.recipient_id : m.sender_id;
+      if (!convos.has(partnerId)) {
+        convos.set(partnerId, {
+          partner_id: partnerId,
+          last_text: m.text,
+          last_at: m.created_at,
+          last_from_me: m.sender_id === req.user.id,
+          unread: 0
+        });
+      }
+      if (m.recipient_id === req.user.id && !m.read_at) {
+        convos.get(partnerId).unread += 1;
+      }
+    }
+
+    const out = [];
+    for (const c of convos.values()) {
+      const u = await q(db.get("SELECT username, avatar_url FROM users WHERE id = ?", [c.partner_id]));
+      if (!u) continue;
+      out.push({ ...c, partner_username: u.username, partner_avatar: u.avatar_url });
+    }
+    out.sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
+    res.json({ conversations: out });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/messages/with/:username", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  try {
+    const partner = await getUserByUsername(req.params.username);
+    if (!partner) return res.status(404).json({ error: "no such user" });
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
+    const rows = await q(db.all(
+      `SELECT m.id, m.sender_id, m.recipient_id, m.text, m.created_at, m.read_at
+         FROM messages m
+        WHERE (m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)
+        ORDER BY m.created_at DESC
+        LIMIT ?`,
+      [req.user.id, partner.id, partner.id, req.user.id, limit]
+    ));
+
+    // Mark their messages to me as read.
+    await q(db.run(
+      "UPDATE messages SET read_at = ? WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL",
+      [new Date().toISOString(), partner.id, req.user.id]
+    ));
+
+    res.json({
+      partner: { id: partner.id, username: partner.username, avatar_url: partner.avatar_url || null },
+      can_send: (await canDm(req.user, partner)).ok,
+      dm_error: (await canDm(req.user, partner)).error || null,
+      messages: rows.reverse()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/messages", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "sign in first" });
+  if (!(await enforceNotBanned(req, res))) return;
+
+  const key = req.user.id;
+  const last = lastDmAt.get(key) || 0;
+  if (Date.now() - last < DM_COOLDOWN_MS && !isAdminUser(req.user)) {
+    const wait = Math.ceil((DM_COOLDOWN_MS - (Date.now() - last)) / 1000);
+    return res.status(429).json({ error: `slow down — try again in ${wait}s` });
+  }
+
+  const text = String(req.body?.text || "").trim().slice(0, 1000);
+  if (!text) return res.status(400).json({ error: "message text is required" });
+
+  try {
+    const recipient = await getUserByUsername(req.body?.to);
+    if (!recipient) return res.status(404).json({ error: "no such user" });
+
+    const check = await canDm(req.user, recipient);
+    if (!check.ok) return res.status(403).json({ error: check.error });
+
+    const message = {
+      id: crypto.randomUUID(),
+      sender_id: req.user.id,
+      recipient_id: recipient.id,
+      text,
+      created_at: new Date().toISOString()
+    };
+    await q(db.run(
+      `INSERT INTO messages (id, sender_id, recipient_id, text, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [message.id, message.sender_id, message.recipient_id, message.text, message.created_at]
+    ));
+    lastDmAt.set(key, Date.now());
+    res.status(201).json({ message, to: { username: recipient.username } });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -964,9 +1446,12 @@ async function adminOverviewPayload() {
   ));
 
   const users = await q(db.all(
-    `SELECT u.id, u.username, u.created_at,
+    `SELECT u.id, u.username, u.created_at, u.avatar_url, u.bg_url, u.bio,
+            u.profile_visibility, u.dm_policy,
             (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) AS comments_posted,
-            (SELECT COUNT(*) FROM likes_by l WHERE l.user_id = u.id) AS likes_given
+            (SELECT COUNT(*) FROM likes_by l WHERE l.user_id = u.id) AS likes_given,
+            (SELECT COUNT(*) FROM friends f WHERE f.user_id = u.id) AS friend_count,
+            (SELECT COUNT(*) FROM messages m WHERE m.sender_id = u.id) AS dms_sent
        FROM users u
       ORDER BY u.created_at DESC`
   ));
@@ -981,6 +1466,7 @@ async function adminOverviewPayload() {
     const b = banByUser.get(u.id);
     return {
       ...u,
+      is_admin: isAdminUser({ username: u.username }),
       banned: b
         ? {
             until: b.expires_at ? new Date(Number(b.expires_at)).toISOString() : null,
@@ -991,12 +1477,23 @@ async function adminOverviewPayload() {
     };
   });
 
+  const messages = await q(db.all(
+    `SELECT m.id, m.sender_id, m.recipient_id, m.text, m.created_at, m.read_at,
+            su.username AS sender_username, ru.username AS recipient_username
+       FROM messages m
+       LEFT JOIN users su ON su.id = m.sender_id
+       LEFT JOIN users ru ON ru.id = m.recipient_id
+      ORDER BY m.created_at DESC
+      LIMIT 500`
+  ));
+
   const totals = {
     listens: songsOut.reduce((a, s) => a + s.listens, 0),
     likes: songsOut.reduce((a, s) => a + s.likes, 0),
     comments: songsOut.reduce((a, s) => a + s.comments, 0),
     users: usersOut.length,
-    bans: bans.length
+    bans: bans.length,
+    dms: Number((await q(db.get("SELECT COUNT(*) AS n FROM messages")) || { n: 0 }).n)
   };
 
   return {
@@ -1009,7 +1506,8 @@ async function adminOverviewPayload() {
     songs: songsOut,
     comments,
     users: usersOut,
-    bans
+    bans,
+    messages
   };
 }
 
@@ -1213,7 +1711,19 @@ app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
     await q(db.run("DELETE FROM likes_by WHERE user_id = ?", [row.id]));
     await q(db.run("UPDATE comments SET user_id = NULL WHERE user_id = ?", [row.id]));
     await q(db.run("DELETE FROM bans WHERE kind = 'user' AND value = ?", [row.id]));
+    await q(db.run("DELETE FROM friends WHERE user_id = ? OR friend_id = ?", [row.id, row.id]));
+    await q(db.run("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?", [row.id, row.id]));
+    await q(db.run("DELETE FROM messages WHERE sender_id = ? OR recipient_id = ?", [row.id, row.id]));
     await q(db.run("DELETE FROM users WHERE id = ?", [row.id]));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/admin/messages/:id", requireAdmin, async (req, res) => {
+  try {
+    await q(db.run("DELETE FROM messages WHERE id = ?", [req.params.id]));
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1341,9 +1851,35 @@ async function initDatabase() {
       PRIMARY KEY (song_name, user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS friends (
+      user_id TEXT NOT NULL,
+      friend_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, friend_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS friend_requests (
+      id TEXT PRIMARY KEY,
+      from_id TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_comments_song ON comments(song_name, created_at);
     CREATE INDEX IF NOT EXISTS idx_bans_value ON bans(kind, value);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests(to_id);
   `);
 
   // Migrations for databases created by earlier versions.
@@ -1362,9 +1898,15 @@ async function initDatabase() {
   await addColumnIfMissing("songs", "created_at TEXT");
   await addColumnIfMissing("comments", "ip TEXT");
   await addColumnIfMissing("comments", "user_id TEXT");
+  await addColumnIfMissing("users", "avatar_url TEXT");
+  await addColumnIfMissing("users", "bg_url TEXT");
+  await addColumnIfMissing("users", "bio TEXT NOT NULL DEFAULT ''");
+  await addColumnIfMissing("users", "profile_visibility TEXT NOT NULL DEFAULT 'private'");
+  await addColumnIfMissing("users", "dm_policy TEXT NOT NULL DEFAULT 'anyone'");
 
   const defaultSongs = [
     "Whispers",
+    "When I Think About You",
     "Deep Space",
     "Insterstellar Roadtrip (Slowed)",
     "Interstellar Roadtrip (Sped)",
@@ -1377,6 +1919,25 @@ async function initDatabase() {
   ];
 
   for (const song of defaultSongs) await ensureSong(song);
+
+  // Safety net: make sure EVERY audio file bundled in /audio ends up on the
+  // site, even if someone drops a new mp3 in the folder without editing the
+  // tracks list above.
+  const audioDir = path.join(__dirname, "audio");
+  let scanned = [];
+  try {
+    scanned = fs.readdirSync(audioDir)
+      .filter((f) => /\.(mp3|wav|ogg|m4a|flac)$/i.test(f))
+      .map((f) => f.replace(/\.[^.]+$/, "").replace(/^Thomas Miller\s*-\s*/i, "").trim())
+      .filter(Boolean);
+  } catch (_) {}
+  for (const song of scanned) {
+    if (!defaultSongs.some((s) => normalizeSong(s) === normalizeSong(song))) {
+      await ensureSong(song);
+      console.log(`Auto-added bundled song from /audio: ${song}`);
+    }
+  }
+
   await q(db.run("INSERT OR IGNORE INTO listens (song_name, count) VALUES ('whispers', 10)"));
   await q(db.run("INSERT OR IGNORE INTO likes (song_name, count) VALUES ('whispers', 7)"));
 }

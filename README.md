@@ -5,11 +5,17 @@ songs, leave comments — with accounts, global moderation, and a full admin
 panel. The public site is static (GitHub Pages) and talks to a tiny Node +
 SQLite backend for everything global.
 
-## What's inside (v3)
+## What's inside (v4)
 
 | Feature | Where |
 | --- | --- |
 | Per-song listens / likes / comments | `server.js` + SQLite |
+| **Separate sub-sites**: `/music`, `/stems`, `/live-sets`, `/about` | `music.html`, `stems.html`, `live-sets.html`, `about.html` |
+| **Profiles**: custom picture, background, bio, visibility (`private` / `All Visible`) | `/profile`, `profile.js`, `users` table |
+| **Friends**: requests, accept/decline, remove — visible only on `All Visible` profiles | `friends` + `friend_requests` tables |
+| **Direct messages** with per-user policy: anyone / friends-only / nobody (admins always through) | `/messages`, `messages.js`, `messages` table |
+| **Admin panel**: comments (all of them), songs, users (profiles + activity), DM moderation, bans | `admin.html`, `admin.js` |
+| Auto-scan of `audio/` — every bundled mp3 lands on the site automatically | `initDatabase()` in `server.js` |
 | **User accounts** (register / sign in) | `POST /api/users/*`, sign-in modal on the site |
 | **Global bans & timeouts** (account + IP, hours or permanent) | `bans` table, admin Users/Bans tabs |
 | **Add songs from the panel** (title, description, audio + cover upload) | `POST /api/admin/songs`, `/uploads` |

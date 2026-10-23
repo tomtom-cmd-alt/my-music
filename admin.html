@@ -75,6 +75,7 @@
             </div>
             <div class="dash-head-actions">
               <button id="refresh-btn" class="community-btn" type="button">⟳ Refresh</button>
+              <a class="community-btn" href="/">← Site</a>
               <button id="logout-btn" class="community-btn danger" type="button">Log out</button>
             </div>
           </div>
@@ -88,6 +89,9 @@
             <button class="admin-tab" data-tab="songs" type="button">Songs</button>
             <button class="admin-tab" data-tab="users" type="button">
               Users <span id="tab-user-count" class="tab-count mono"></span>
+            </button>
+            <button class="admin-tab" data-tab="messages" type="button">
+              DMs <span id="tab-dm-count" class="tab-count mono"></span>
             </button>
             <button class="admin-tab" data-tab="bans" type="button">
               Bans <span id="tab-ban-count" class="tab-count mono"></span>
@@ -163,12 +167,22 @@
                     <th>Account</th>
                     <th>Joined</th>
                     <th>Activity</th>
+                    <th>Profile</th>
                     <th>Ban / timeout</th>
                   </tr>
                 </thead>
                 <tbody id="users-body"></tbody>
               </table>
             </div>
+          </section>
+
+          <!-- ============ messages tab ============ -->
+          <section id="tab-messages" class="admin-tab-panel" hidden>
+            <p class="muted-note">
+              Every direct message on the site — newest first. Delete anything abusive;
+              the sender loses that message from their thread.
+            </p>
+            <ul id="admin-messages" class="comment-list admin-comment-list"></ul>
           </section>
 
           <!-- ============ bans tab ============ -->

@@ -553,7 +553,16 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(__dirname, { extensions: ["html"] }));
+// Static assets must never linger stale at the CDN/browser after a deploy:
+// always revalidate (files are tiny; 304s are cheap).
+app.use(express.static(__dirname, {
+  extensions: ["html"],
+  setHeaders: (res, filePath) => {
+    if (/\.(html|js|css|json)$/.test(filePath)) {
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    }
+  }
+}));
 
 // Resolve the user session (if any) for every /api call.
 app.use("/api", (req, res, next) => { optionalAuth(req).then(() => next()).catch(() => next()); });

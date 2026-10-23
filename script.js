@@ -206,8 +206,13 @@ function updateAuthUI() {
     fresh.id = "user-avatar";
     const menu = document.getElementById("user-menu");
     if (menu) {
-      menu.querySelector("#menu-profile").href = "/profile";
-      menu.querySelector("#menu-my-comments").href = `/profile?u=${encodeURIComponent(account.username)}`;
+      // every lookup must be guarded — pages share this script but not
+      // all of them carry every menu item, and one null here used to
+      // kill the rest of script.js for signed-in users
+      const profileLink = menu.querySelector("#menu-profile");
+      if (profileLink) profileLink.href = "/profile";
+      const myComments = menu.querySelector("#menu-my-comments");
+      if (myComments) myComments.href = `/profile?u=${encodeURIComponent(account.username)}`;
       const adminLink = menu.querySelector("#menu-admin");
       if (adminLink) adminLink.hidden = !account.is_admin;
     }

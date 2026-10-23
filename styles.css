@@ -29,7 +29,7 @@
 * { box-sizing: border-box; }
 
 /* the hidden attribute must always win over explicit display rules */
-[h[hidden] { display: none !important; }
+[hidden] { display: none !important; }
 
 html { scroll-behavior: smooth; }
 

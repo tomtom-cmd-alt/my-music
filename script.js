@@ -1254,3 +1254,115 @@ MusicAPI.detect().then(({ mode }) => {
   });
   console.info(`[music] storage mode: ${mode}${mode === "server" ? ` (${MusicAPI.base || "same origin"})` : " (localStorage fallback)"}`);
 });
+
+/* ================= maintenance banner ================= */
+/* Polls /api/maintenance; when enabled it covers the page with a
+   full-screen "we're improving things" banner. Staff (admins) get a
+   dismiss button + a small corner ribbon instead. */
+
+(function () {
+  const ACK_KEY = "mm-maintenance-staff-ack";
+  let overlay = null;
+  let ribbon = null;
+  let wasActive = false;
+
+  function account() {
+    try { return JSON.parse(localStorage.getItem("tm-music-account-v2") || "null"); }
+    catch (_) { return null; }
+  }
+
+  function isStaff() {
+    const acct = account();
+    return Boolean(acct && acct.is_admin);
+  }
+
+  function ensureOverlay() {
+    if (overlay) return overlay;
+    overlay = document.createElement("div");
+    overlay.className = "maintenance-overlay";
+    overlay.setAttribute("role", "alertdialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.innerHTML = `
+      <div class="maintenance-card">
+        <div class="maintenance-pulse" aria-hidden="true"><span></span><span></span><span></span></div>
+        <p class="maintenance-kicker">Scheduled improvements</p>
+        <h2 class="maintenance-title"></h2>
+        <p class="maintenance-eta mono"></p>
+        <div class="maintenance-bar" aria-hidden="true"><i></i></div>
+        <p class="maintenance-note">This page will reopen automatically when we're done.</p>
+        <div class="maintenance-staff" hidden>
+          <button type="button" class="btn small-btn maintenance-continue">I'm staff — continue anyway</button>
+        </div>
+      </div>`;
+    overlay.querySelector(".maintenance-continue").addEventListener("click", () => {
+      try { sessionStorage.setItem(ACK_KEY, overlay.dataset.updated || "1"); } catch (_) {}
+      hide();
+      checkRibbon(true);
+    });
+    document.body.append(overlay);
+    return overlay;
+  }
+
+  function ensureRibbon() {
+    if (ribbon) return ribbon;
+    ribbon = document.createElement("a");
+    ribbon.className = "maintenance-ribbon";
+    ribbon.href = "/admin.html";
+    ribbon.textContent = "Maintenance mode is ON";
+    document.body.append(ribbon);
+    return ribbon;
+  }
+
+  function hide() {
+    if (overlay) overlay.remove();
+    overlay = null;
+  }
+
+  function checkRibbon(forceHideOverlay) {
+    if (ribbon) ribbon.remove();
+    ribbon = null;
+    if (!wasActive && !forceHideOverlay) return;
+    let acked = null;
+    try { acked = sessionStorage.getItem(ACK_KEY); } catch (_) {}
+    if (isStaff() && acked) {
+      ensureRibbon();
+    }
+  }
+
+  async function check() {
+    let data = null;
+    try {
+      const res = await fetch("/api/maintenance", { cache: "no-store" });
+      if (res.ok) data = await res.json();
+    } catch (_) { return; }
+    if (!data || !data.enabled) {
+      if (wasActive) {
+        // maintenance just ended — drop the user back into the live site
+        wasActive = false;
+        location.reload();
+        return;
+      }
+      hide();
+      checkRibbon(false);
+      return;
+    }
+
+    let acked = null;
+    try { acked = sessionStorage.getItem(ACK_KEY); } catch (_) {}
+    if (isStaff() && acked && acked === data.updated_at) {
+      hide();
+      checkRibbon(true);
+      return;
+    }
+
+    wasActive = true;
+    const el = ensureOverlay();
+    el.dataset.updated = data.updated_at || "1";
+    el.querySelector(".maintenance-title").textContent = data.message || "Hold on, our team is working on improving your experience!";
+    el.querySelector(".maintenance-eta").textContent = data.eta ? `ETA: ${data.eta}` : "ETA: coming right up";
+    el.querySelector(".maintenance-staff").hidden = !isStaff();
+  }
+
+  check();
+  setInterval(check, 30000);
+})();

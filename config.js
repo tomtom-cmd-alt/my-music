@@ -20,5 +20,6 @@
  */
 window.MUSIC_CONFIG = {
   // Public base URL of the Node backend, e.g. "https://my-music-api.onrender.com"
-  apiBase: "https://my-music-dnog.onrender.com"
+  // Empty string = same origin (the Render server serves both site + API).
+  apiBase: ""
 };

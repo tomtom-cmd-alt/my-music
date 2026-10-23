@@ -118,6 +118,15 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+/* ---------------- data persistence across redeploys ---------------- */
+/* Render's ephemeral disk wipes the DB on every deploy. persistence.js
+   mirrors an encrypted snapshot to a git branch; restore() runs BEFORE
+   the database is opened so a fresh container comes back with all its
+   accounts, comments and DMs. Set GITHUB_TOKEN + DATA_SECRET in the
+   Render dashboard to enable it. */
+const persistence = require("./persistence").createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR: __dirname });
+persistence.restore();
+
 const db = openDatabase();
 const q = (result) => Promise.resolve(result); // node:sqlite sync + sqlite3 promises both await fine
 
@@ -549,6 +558,55 @@ app.use(express.static(__dirname, { extensions: ["html"] }));
 // Resolve the user session (if any) for every /api call.
 app.use("/api", (req, res, next) => { optionalAuth(req).then(() => next()).catch(() => next()); });
 
+// any successful mutating API call marks the data snapshot dirty
+app.use("/api", (req, res, next) => {
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    res.on("finish", () => { if (res.statusCode < 400) persistence.markDirty(); });
+  }
+  next();
+});
+
+/* ---------------- maintenance banner ---------------- */
+
+const MAINTENANCE_FILE = path.join(__dirname, "maintenance.json");
+function readMaintenance() {
+  try {
+    const m = JSON.parse(fs.readFileSync(MAINTENANCE_FILE, "utf8"));
+    return { enabled: Boolean(m.enabled), message: String(m.message || ""), eta: String(m.eta || ""), updated_at: String(m.updated_at || "") };
+  } catch (_) {
+    return { enabled: false, message: "", eta: "", updated_at: "" };
+  }
+}
+
+app.get("/api/maintenance", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(readMaintenance());
+});
+
+app.post("/api/admin/maintenance", requireAdmin, (req, res) => {
+  const enabled = Boolean(req.body && req.body.enabled);
+  const eta = String((req.body && req.body.eta) || "").slice(0, 120);
+  const message = String((req.body && req.body.message) || "Hold on, our team is working on improving your experience!").slice(0, 200);
+  const next = { enabled, message, eta, updated_at: new Date().toISOString() };
+  try {
+    fs.writeFileSync(MAINTENANCE_FILE, JSON.stringify(next, null, 2) + "\n");
+    res.json({ ok: true, ...next });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* ---------------- persistence admin endpoints ---------------- */
+
+app.get("/api/admin/persistence", requireAdmin, (_req, res) => {
+  res.json({ ...persistence.status, env_ready: Boolean(process.env.GITHUB_TOKEN && process.env.DATA_SECRET) });
+});
+
+app.post("/api/admin/persistence/backup", requireAdmin, async (_req, res) => {
+  const ok = await persistence.backup("manual");
+  res.json({ ok, status: persistence.status });
+});
+
 /* ------------------------------------------------------------------ */
 /* Public API — discovery                                             */
 /* ------------------------------------------------------------------ */
@@ -563,9 +621,11 @@ app.get("/api/health", (_req, res) => {
     profiles: true,
     friends: true,
     dms: true,
-    version: 4,
+    version: 5,
     github: GITHUB_ENABLED,
-    password_login: !PASSWORD_DISABLED
+    password_login: !PASSWORD_DISABLED,
+    persistence: { enabled: persistence.status.enabled, last_backup: persistence.status.last_backup, last_restore: persistence.status.last_restore, last_error: persistence.status.last_error },
+    maintenance: readMaintenance()
   });
 });
 
@@ -1963,6 +2023,12 @@ initDatabase()
     app.listen(PORT, () => {
       console.log(`Server listening on http://localhost:${PORT}`);
       console.log(`Admin panel: http://localhost:${PORT}/admin.html`);
+      if (persistence.status.enabled) {
+        console.log(`Data persistence: ON — snapshots go to ${persistence.status.repo} @ ${persistence.status.branch}`);
+      } else {
+        console.log("Data persistence: OFF — set GITHUB_TOKEN + DATA_SECRET env vars, or accounts will reset on every deploy.");
+      }
+      persistence.start();
     });
   })
   .catch((error) => {

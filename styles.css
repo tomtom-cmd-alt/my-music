@@ -45,6 +45,9 @@ body {
 img { max-width: 100%; display: block; }
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { font: inherit; }
+/* inputs must be allowed to shrink inside flex rows, otherwise forms
+   (e.g. the DM "start a chat" box) overflow their panels */
+input, textarea, select { min-width: 0; }
 
 ::selection { background: rgba(139, 92, 246, 0.45); }
 
@@ -1881,7 +1884,7 @@ td.size { color: var(--muted); font-size: 0.9rem; }
 
 .dm-app {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 1.2rem;
   align-items: start;
   margin-top: 1.4rem;
@@ -1996,3 +1999,170 @@ td.size { color: var(--muted); font-size: 0.9rem; }
 
 /* hidden comments on profile */
 .comment-item.is-hidden { opacity: 0.55; border-style: dashed; }
+
+/* ---------- maintenance banner ---------- */
+
+.maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(4, 7, 16, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.maintenance-card {
+  position: relative;
+  width: min(560px, 100%);
+  text-align: center;
+  padding: 3rem 2.4rem 2.4rem;
+  border-radius: 24px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.96), rgba(7, 11, 24, 0.98));
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 80px rgba(139, 92, 246, 0.18);
+  overflow: hidden;
+}
+
+.maintenance-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--grad);
+  background-size: 200% 100%;
+  animation: maintenance-slide 2.4s linear infinite;
+}
+
+@keyframes maintenance-slide {
+  from { background-position: 0% 0; }
+  to { background-position: 200% 0; }
+}
+
+.maintenance-pulse {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.4rem;
+}
+
+.maintenance-pulse span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--grad);
+  animation: maintenance-bounce 1.2s ease-in-out infinite;
+}
+
+.maintenance-pulse span:nth-child(2) { animation-delay: 0.15s; }
+.maintenance-pulse span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes maintenance-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(-8px); opacity: 1; }
+}
+
+.maintenance-kicker {
+  margin: 0 0 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.maintenance-title {
+  margin: 0 0 0.7rem;
+  font-family: var(--display);
+  font-size: clamp(1.5rem, 4vw, 2.1rem);
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.maintenance-eta {
+  margin: 0 0 1.6rem;
+  font-size: 0.95rem;
+  color: var(--primary-bright);
+  font-weight: 600;
+}
+
+.maintenance-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  overflow: hidden;
+  margin-bottom: 1.4rem;
+}
+
+.maintenance-bar i {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: var(--grad);
+  animation: maintenance-progress 1.6s ease-in-out infinite;
+}
+
+@keyframes maintenance-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
+}
+
+.maintenance-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.maintenance-staff { margin-top: 1.4rem; }
+
+.maintenance-ribbon {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2147483000;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0b1020;
+  background: var(--grad);
+  box-shadow: 0 12px 40px rgba(139, 92, 246, 0.45);
+}
+
+/* ---------- admin: site tab ---------- */
+
+.maint-row { margin-bottom: 0.9rem; }
+
+.maint-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.maint-toggle input { width: 18px; height: 18px; accent-color: var(--primary); }
+
+.persistence-box {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.persist-ok { color: var(--green); font-weight: 700; margin: 0 0 0.4rem; }
+.persist-bad { color: var(--pink, #f472b6); font-weight: 700; margin: 0 0 0.4rem; }
+
+.persist-meta {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0.9rem;
+  font-size: 0.78rem;
+  display: grid;
+  gap: 0.2rem;
+}

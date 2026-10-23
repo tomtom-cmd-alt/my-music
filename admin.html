@@ -96,6 +96,7 @@
             <button class="admin-tab" data-tab="bans" type="button">
               Bans <span id="tab-ban-count" class="tab-count mono"></span>
             </button>
+            <button class="admin-tab" data-tab="site" type="button">Site</button>
           </div>
 
           <!-- ============ comments tab ============ -->
@@ -216,6 +217,42 @@
               </table>
             </div>
           </section>
+          <!-- ============ site tab (maintenance + persistence) ============ -->
+          <section id="tab-site" class="admin-tab-panel" hidden>
+            <form id="maintenance-form" class="add-song-form">
+              <h3>🛠️ Maintenance banner</h3>
+              <p class="muted-note" style="margin: 0 0 1rem; font-size: 0.85rem">
+                While enabled, every page shows a full-screen banner and visitors can't
+                interact with the site. Perfect while a deploy is rolling out.
+              </p>
+              <div class="maint-row">
+                <label class="maint-toggle">
+                  <input id="maintenance-enabled" type="checkbox" />
+                  <span>Show maintenance banner</span>
+                </label>
+              </div>
+              <div>
+                <span class="field-label">Message</span>
+                <input id="maintenance-message" type="text" maxlength="200"
+                  placeholder="Hold on, our team is working on improving your experience!" />
+              </div>
+              <div>
+                <span class="field-label">ETA</span>
+                <input id="maintenance-eta" type="text" maxlength="120"
+                  placeholder="e.g. ~10 minutes" />
+              </div>
+              <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap">
+                <button type="submit" class="btn small-btn" id="maintenance-save">Save</button>
+                <span id="maintenance-status" class="muted-note mono"></span>
+              </div>
+            </form>
+
+            <div class="add-song-form" style="margin-top: 1.2rem">
+              <h3>💾 Data persistence</h3>
+              <div id="persistence-box" class="persistence-box"><span class="muted-note mono">loading…</span></div>
+            </div>
+          </section>
+
         </div>
       </div>
     </main>

@@ -25,6 +25,14 @@ const tabSongs = document.getElementById("tab-songs");
 const tabUsers = document.getElementById("tab-users");
 const tabMessages = document.getElementById("tab-messages");
 const tabBans = document.getElementById("tab-bans");
+const tabSite = document.getElementById("tab-site");
+const maintenanceForm = document.getElementById("maintenance-form");
+const maintenanceEnabled = document.getElementById("maintenance-enabled");
+const maintenanceMessage = document.getElementById("maintenance-message");
+const maintenanceEta = document.getElementById("maintenance-eta");
+const maintenanceStatus = document.getElementById("maintenance-status");
+const maintenanceSave = document.getElementById("maintenance-save");
+const persistenceBox = document.getElementById("persistence-box");
 
 const filterSong = document.getElementById("filter-song");
 const filterStatus = document.getElementById("filter-status");
@@ -987,7 +995,89 @@ tabs.forEach((tab) => {
     tabUsers.hidden = target !== "users";
     tabMessages.hidden = target !== "messages";
     tabBans.hidden = target !== "bans";
+    tabSite.hidden = target !== "site";
+    if (target === "site") loadSiteTab();
   });
+});
+
+/* ---------------- site tab: maintenance + persistence ---------------- */
+
+async function loadSiteTab() {
+  try {
+    const m = await MusicAPI.maintenanceGet();
+    maintenanceEnabled.checked = Boolean(m.enabled);
+    maintenanceMessage.value = m.message || "";
+    maintenanceEta.value = m.eta || "";
+    maintenanceStatus.textContent = m.updated_at ? `last change ${new Date(m.updated_at).toLocaleString()}` : "";
+  } catch (_) {}
+  await renderPersistence();
+}
+
+async function renderPersistence() {
+  try {
+    const p = await MusicAPI.persistenceStatus(token);
+    if (!p.env_ready) {
+      persistenceBox.innerHTML = `
+        <p class="persist-bad">Persistence is OFF — accounts reset on every deploy.</p>
+        <p class="muted-note" style="font-size: 0.82rem; margin: 0.4rem 0 0">
+          Fix (2 minutes): in the Render dashboard open this service →
+          <span class="mono">Environment</span> → add
+          <span class="mono">GITHUB_TOKEN</span> (a GitHub token with Contents read/write
+          for this repo) and <span class="mono">DATA_SECRET</span> (any long random
+          passphrase). Snapshots then restore automatically at every boot.
+        </p>`;
+      return;
+    }
+    const state = p.enabled
+      ? `<p class="persist-ok">Persistence is ON — snapshots go to <span class="mono">${escapeHtml(p.repo)} @ ${escapeHtml(p.branch)}</span></p>`
+      : `<p class="persist-bad">Persistence is configured but not active.</p>`;
+    persistenceBox.innerHTML = `
+      ${state}
+      <ul class="muted-note mono persist-meta">
+        <li>last backup: ${p.last_backup ? escapeHtml(new Date(p.last_backup).toLocaleString()) : "never"}</li>
+        <li>last restore: ${p.last_restore ? escapeHtml(p.last_restore) : "—"}</li>
+        ${p.last_error ? `<li class="persist-bad">last error: ${escapeHtml(p.last_error)}</li>` : ""}
+      </ul>
+      <button id="backup-now" class="btn small-btn" type="button">Back up now</button>`;
+    const btn = document.getElementById("backup-now");
+    if (btn) {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Backing up…";
+        try {
+          const r = await MusicAPI.persistenceBackupNow(token);
+          showToast(r.ok ? "Snapshot pushed to GitHub." : `Backup failed: ${(r.status && r.status.last_error) || "unknown"}`, r.ok ? "success" : "error");
+        } catch (error) {
+          showToast(error.message, "error");
+        }
+        renderPersistence();
+      });
+    }
+  } catch (error) {
+    persistenceBox.innerHTML = `<p class="muted-note mono">could not load: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+maintenanceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  maintenanceSave.disabled = true;
+  try {
+    await MusicAPI.maintenanceSet(token, {
+      enabled: maintenanceEnabled.checked,
+      message: maintenanceMessage.value.trim(),
+      eta: maintenanceEta.value.trim()
+    });
+    maintenanceStatus.textContent = `saved ${new Date().toLocaleTimeString()}`;
+    showToast(maintenanceEnabled.checked ? "Maintenance banner is now LIVE on every page." : "Maintenance banner switched off.", "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    maintenanceSave.disabled = false;
+  }
 });
 
 /* ---------------- boot ---------------- */

@@ -345,6 +345,24 @@ window.MusicAPI = (function () {
 
     adminDeleteMessage(token, id) {
       return jfetch("/api/admin/messages/" + encodeURIComponent(id), { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+    },
+
+    /* ---------------- maintenance + persistence ---------------- */
+
+    maintenanceGet() {
+      return jfetch("/api/maintenance", { cache: "no-store" });
+    },
+
+    maintenanceSet(token, payload) {
+      return jfetch("/api/admin/maintenance", jsonOptions("POST", payload, token));
+    },
+
+    persistenceStatus(token) {
+      return jfetch("/api/admin/persistence", { headers: { Authorization: "Bearer " + token } });
+    },
+
+    persistenceBackupNow(token) {
+      return jfetch("/api/admin/persistence/backup", jsonOptions("POST", {}, token));
     }
   };
 })();

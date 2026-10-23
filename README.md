@@ -66,6 +66,37 @@ to localStorage per device until `apiBase` is configured.
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | a GitHub **OAuth App** — enables "Sign in with GitHub" on the panel. Callback URL: `https://your-api.onrender.com/api/auth/github/callback` |
 | `ADMIN_GITHUB_USERS` | comma-separated GitHub logins allowed as admins (default `tomtom-cmd,tomtom-cmd-alt`) |
 | `SESSION_TTL_DAYS` | user session lifetime (default 30) |
+| `GITHUB_TOKEN` | **data persistence** — fine-grained PAT with *Contents: read/write* on this repo. Together with `DATA_SECRET` this enables automatic snapshots of the database + uploads. |
+| `DATA_SECRET` | **data persistence** — any long random passphrase. The snapshot is AES-256-GCM encrypted with it before being pushed to git. |
+| `GITHUB_BACKUP_REPO` | optional, default `tomtom-cmd-alt/my-music` |
+| `DATA_BRANCH` | optional, default `site-data` (the branch where snapshots live) |
+
+### Data persistence across deploys (Render free tier)
+
+Render's free disk is ephemeral — without extra help every deploy wipes all
+accounts, comments and DMs. With `GITHUB_TOKEN` + `DATA_SECRET` set, the
+server mirrors an **encrypted** snapshot of the DB, admin files and uploaded
+media to the `site-data` branch in this repo:
+
+- **restore** — on boot, if the local DB is missing (fresh container), the
+  snapshot is downloaded, decrypted and put in place *before* the DB opens.
+- **backup** — debounced 12 s after every successful write, swept every
+  3 minutes, and flushed on `SIGTERM` (i.e. right before Render kills the
+  old container during a deploy).
+- everything is AES-256-GCM encrypted with `DATA_SECRET`, so the public
+  repo never sees plaintext passwords, sessions or messages.
+- admins can watch it live: Admin panel → **Site** tab (status + "Back up
+  now"), and toggle the **maintenance banner** there too.
+
+If the env vars are missing, the site still works but persistence shows
+"OFF" in the admin panel and data resets on each deploy.
+
+### Maintenance banner
+
+`maintenance.json` in the repo root drives a full-screen "we're improving
+things" banner on every page (`/api/maintenance`, polled every 30 s, page
+auto-reloads when it lifts). Flip it from the admin panel (**Site** tab) or
+by editing the file and pushing. Admins see a "continue anyway" button.
 
 ### Setting up GitHub admin sign-in
 

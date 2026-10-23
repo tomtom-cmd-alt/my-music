@@ -97,6 +97,9 @@
               Bans <span id="tab-ban-count" class="tab-count mono"></span>
             </button>
             <button class="admin-tab" data-tab="site" type="button">Site</button>
+            <button class="admin-tab" data-tab="zai" type="button">
+              Z.ai <span id="tab-zai-count" class="tab-count mono"></span>
+            </button>
           </div>
 
           <!-- ============ comments tab ============ -->
@@ -250,6 +253,39 @@
             <div class="add-song-form" style="margin-top: 1.2rem">
               <h3>💾 Data persistence</h3>
               <div id="persistence-box" class="persistence-box"><span class="muted-note mono">loading…</span></div>
+            </div>
+          </section>
+
+          <!-- ============ zai tab (Message Z.ai) ============ -->
+          <section id="tab-zai" class="admin-tab-panel" hidden>
+            <div id="zai-gate" class="add-song-form">
+              <h3>🤖 Message Z.ai</h3>
+              <p class="muted-note" style="margin: 0 0 1rem; font-size: 0.85rem">
+                A private line to Z.ai. Paste the special key
+                (<span class="mono">ZAI_ACCESS_KEY</span> from the server's environment)
+                to unlock this chat — it stays unlocked for this browser session only.
+              </p>
+              <div class="ban-controls" style="flex-wrap: wrap">
+                <input id="zai-key-input" type="password" placeholder="Special key (ZAI_ACCESS_KEY)"
+                  autocomplete="off" style="width: 300px" />
+                <button type="button" class="btn small-btn" id="zai-unlock">Unlock</button>
+              </div>
+              <p id="zai-gate-status" class="muted-note mono" style="margin: 0.6rem 0 0"></p>
+            </div>
+
+            <div id="zai-chat" hidden>
+              <div class="zai-head">
+                <h3>🤖 Message Z.ai</h3>
+                <span id="zai-mode" class="muted-note mono"></span>
+                <button type="button" class="community-btn danger" id="zai-clear" style="margin-left: auto">🗑 Clear chat</button>
+                <button type="button" class="community-btn" id="zai-relock">Lock</button>
+              </div>
+              <div id="zai-log" class="zai-log" aria-live="polite"></div>
+              <form id="zai-form" class="zai-form">
+                <input id="zai-text" type="text" maxlength="4000"
+                  placeholder="Message Z.ai…" autocomplete="off" />
+                <button type="submit" class="btn small-btn" id="zai-send">Send</button>
+              </form>
             </div>
           </section>
 

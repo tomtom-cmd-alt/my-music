@@ -65,6 +65,22 @@ if (/^(off|disable|disabled|none)$/i.test(RAW_ADMIN_PASSWORD)) {
   PASSWORD_GENERATED = true;
 }
 
+/* ---------------- Message Z.ai (admin-only AI chat) ----------------
+ * ZAI_ACCESS_KEY — the "special key". Unlocks the Message Z.ai chat in the
+ *                  admin panel AND authorizes direct developer access to
+ *                  /api/zai/inbox + /api/zai/reply (X-ZAI-Key header).
+ * ZAI_API_KEY    — optional Z.ai open-platform API key. When set, admin
+ *                  messages get an instant auto-reply from the GLM model.
+ *                  When unset, messages queue in the inbox for the
+ *                  developer to answer via the direct-access API.
+ * ZAI_MODEL      — optional, default "glm-4.6".
+ * ZAI_BASE_URL   — optional OpenAI-compatible base, default z.ai v4 API. */
+const ZAI_ACCESS_KEY = String(process.env.ZAI_ACCESS_KEY || "").trim();
+const ZAI_API_KEY = String(process.env.ZAI_API_KEY || "").trim();
+const ZAI_MODEL = String(process.env.ZAI_MODEL || "glm-4.6").trim() || "glm-4.6";
+const ZAI_BASE_URL = String(process.env.ZAI_BASE_URL || "https://api.z.ai/api/paas/v4").trim().replace(/\/+$/, "");
+const ZAI_ENABLED = Boolean(ZAI_ACCESS_KEY);
+
 /* ------------------------------------------------------------------ */
 /* SQLite adapter: node:sqlite (sync) or sqlite3 (async), same API    */
 /* ------------------------------------------------------------------ */
@@ -630,8 +646,9 @@ app.get("/api/health", (_req, res) => {
     profiles: true,
     friends: true,
     dms: true,
-    version: 6,
+    version: 7,
     github: GITHUB_ENABLED,
+    zai: { enabled: ZAI_ENABLED, auto_reply: Boolean(ZAI_API_KEY), model: ZAI_ENABLED ? ZAI_MODEL : null },
     password_login: !PASSWORD_DISABLED,
     persistence: { enabled: persistence.status.enabled, last_backup: persistence.status.last_backup, last_restore: persistence.status.last_restore, last_error: persistence.status.last_error, restore_failed: Boolean(persistence.status.restore_failed) },
     maintenance: readMaintenance()
@@ -1905,6 +1922,140 @@ app.delete("/api/admin/bans/:id", requireAdmin, async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Message Z.ai — admin-only AI chat + developer direct access        */
+/* ------------------------------------------------------------------ */
+
+const ZAI_SYSTEM_PROMPT =
+  "You are Z.ai, the AI assistant built into the admin panel of Thomas Miller's " +
+  "music site (My-Music). You help the site owner run the site: answering questions " +
+  "about music production, artwork, community moderation and general ideas. " +
+  "You are chatting with the admin (Thomas), so you can be casual and friendly. " +
+  "Keep replies concise and useful.";
+
+function zaiKeyFrom(req) {
+  const header = String(req.headers["x-zai-key"] || "").trim();
+  if (header) return header;
+  return String(req.body?.key || "").trim();
+}
+
+function requireZai(req, res, next) {
+  if (!ZAI_ENABLED) {
+    return res.status(501).json({ error: "Message Z.ai is not configured on this server — set ZAI_ACCESS_KEY." });
+  }
+  if (!zaiKeyFrom(req) || !timingSafeEqualStr(zaiKeyFrom(req), ZAI_ACCESS_KEY)) {
+    // Small delay to blunt brute force, mirroring admin login.
+    return setTimeout(() => res.status(401).json({ error: "wrong special key" }), 350);
+  }
+  next();
+}
+
+async function zaiAutoReply(history) {
+  const messages = [{ role: "system", content: ZAI_SYSTEM_PROMPT }];
+  for (const m of history) {
+    messages.push({ role: m.role === "zai" ? "assistant" : "user", content: m.text });
+  }
+  const res = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${ZAI_API_KEY}`,
+      "X-Z-AI-From": "Z"
+    },
+    body: JSON.stringify({ model: ZAI_MODEL, messages, thinking: { type: "disabled" } })
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Z.ai API error ${res.status} ${detail.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content;
+  if (!text || !String(text).trim()) throw new Error("Z.ai API returned an empty reply");
+  return String(text).trim();
+}
+
+async function insertZaiMessage(role, text, via) {
+  const id = crypto.randomUUID();
+  await q(db.run(
+    "INSERT INTO zai_messages (id, role, text, created_at, via) VALUES (?, ?, ?, ?, ?)",
+    [id, role, text, new Date().toISOString(), via]
+  ));
+  persistence.markDirty(); // include the new message in the next snapshot
+  return id;
+}
+
+// Public config so the panel knows whether the feature exists (no secrets).
+app.get("/api/zai/config", (_req, res) => {
+  res.json({ enabled: ZAI_ENABLED, auto_reply: Boolean(ZAI_API_KEY), model: ZAI_ENABLED ? ZAI_MODEL : null });
+});
+
+// Chat history (admin session + special key).
+app.get("/api/zai/history", requireAdmin, requireZai, async (_req, res) => {
+  try {
+    const rows = await q(db.all(
+      "SELECT id, role, text, created_at, via FROM zai_messages ORDER BY created_at ASC LIMIT 500"
+    ));
+    res.json({ messages: rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Send an admin message. Auto-replies via the Z.ai API when ZAI_API_KEY is
+// set; otherwise the message queues for the developer (direct access).
+app.post("/api/zai/chat", requireAdmin, requireZai, async (req, res) => {
+  const text = String(req.body?.text || "").trim().slice(0, 4000);
+  if (!text) return res.status(400).json({ error: "message text is required" });
+  try {
+    await insertZaiMessage("admin", text, null);
+    if (!ZAI_API_KEY) {
+      return res.json({ ok: true, queued: true });
+    }
+    const rows = await q(db.all("SELECT role, text FROM zai_messages ORDER BY created_at DESC LIMIT 20"));
+    const reply = await zaiAutoReply(rows.reverse());
+    await insertZaiMessage("zai", reply, "llm");
+    res.json({ ok: true, reply, via: "llm" });
+  } catch (error) {
+    // The admin message is stored either way — only the auto-reply failed.
+    res.json({ ok: true, queued: true, auto_reply_error: error.message });
+  }
+});
+
+// Clear the conversation (admin session + special key).
+app.post("/api/zai/clear", requireAdmin, requireZai, async (_req, res) => {
+  try {
+    await q(db.run("DELETE FROM zai_messages"));
+    persistence.markDirty();
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Direct access: developer reads the conversation with the special key only.
+app.get("/api/zai/inbox", requireZai, async (_req, res) => {
+  try {
+    const rows = await q(db.all(
+      "SELECT id, role, text, created_at, via FROM zai_messages ORDER BY created_at ASC LIMIT 500"
+    ));
+    res.json({ messages: rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Direct access: developer answers as "Z.ai" with the special key only.
+app.post("/api/zai/reply", requireZai, async (req, res) => {
+  const text = String(req.body?.text || "").trim().slice(0, 4000);
+  if (!text) return res.status(400).json({ error: "reply text is required" });
+  try {
+    await insertZaiMessage("zai", text, "developer");
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Fallbacks                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -2015,6 +2166,16 @@ async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests(to_id);
+
+    CREATE TABLE IF NOT EXISTS zai_messages (
+      id TEXT PRIMARY KEY,
+      role TEXT NOT NULL,          -- 'admin' (sent from the panel) | 'zai' (reply)
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      via TEXT                     -- 'llm' (auto-reply) | 'developer' (direct access)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_zai_messages_time ON zai_messages(created_at);
   `);
 
   // Migrations for databases created by earlier versions.

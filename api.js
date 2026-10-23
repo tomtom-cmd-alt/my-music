@@ -376,6 +376,35 @@ window.MusicAPI = (function () {
 
     persistenceBackupNow(token) {
       return jfetch("/api/admin/persistence/backup", jsonOptions("POST", {}, token));
+    },
+
+    zaiConfig() {
+      return jfetch("/api/zai/config");
+    },
+
+    zaiHistory(token, key) {
+      return jfetch("/api/zai/history", {
+        headers: { Authorization: "Bearer " + token, "X-ZAI-Key": key }
+      });
+    },
+
+    zaiSend(token, key, text) {
+      return jfetch("/api/zai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+          "X-ZAI-Key": key
+        },
+        body: JSON.stringify({ text })
+      });
+    },
+
+    zaiClear(token, key) {
+      return jfetch("/api/zai/clear", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "X-ZAI-Key": key }
+      });
     }
   };
 })();

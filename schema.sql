@@ -123,3 +123,14 @@ CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests(to_id);
 
 INSERT OR IGNORE INTO songs (song_name, display_name) VALUES
   ('when-i-think-about-you', 'When I Think About You');
+
+-- v7 additions: Message Z.ai (admin-only AI chat + developer direct access)
+CREATE TABLE IF NOT EXISTS zai_messages (
+  id TEXT PRIMARY KEY,
+  role TEXT NOT NULL,          -- 'admin' (sent from the panel) | 'zai' (reply)
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  via TEXT                     -- 'llm' (auto-reply) | 'developer' (direct access)
+);
+
+CREATE INDEX IF NOT EXISTS idx_zai_messages_time ON zai_messages(created_at);

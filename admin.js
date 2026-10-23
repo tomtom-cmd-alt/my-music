@@ -34,6 +34,22 @@ const maintenanceStatus = document.getElementById("maintenance-status");
 const maintenanceSave = document.getElementById("maintenance-save");
 const persistenceBox = document.getElementById("persistence-box");
 
+/* --- Message Z.ai --- */
+const tabZai = document.getElementById("tab-zai");
+const zaiGate = document.getElementById("zai-gate");
+const zaiChat = document.getElementById("zai-chat");
+const zaiKeyInput = document.getElementById("zai-key-input");
+const zaiUnlockBtn = document.getElementById("zai-unlock");
+const zaiGateStatus = document.getElementById("zai-gate-status");
+const zaiMode = document.getElementById("zai-mode");
+const zaiLog = document.getElementById("zai-log");
+const zaiForm = document.getElementById("zai-form");
+const zaiText = document.getElementById("zai-text");
+const zaiSendBtn = document.getElementById("zai-send");
+const zaiClearBtn = document.getElementById("zai-clear");
+const zaiRelockBtn = document.getElementById("zai-relock");
+const tabZaiCount = document.getElementById("tab-zai-count");
+
 const filterSong = document.getElementById("filter-song");
 const filterStatus = document.getElementById("filter-status");
 const commentsShown = document.getElementById("comments-shown");
@@ -968,6 +984,7 @@ loginForm.addEventListener("submit", async (event) => {
 
 logoutBtn.addEventListener("click", async () => {
   try { if (token) await MusicAPI.adminLogout(token); } catch (_) {}
+  stopZaiPolling();
   showLogin();
 });
 
@@ -996,7 +1013,13 @@ tabs.forEach((tab) => {
     tabMessages.hidden = target !== "messages";
     tabBans.hidden = target !== "bans";
     tabSite.hidden = target !== "site";
+    tabZai.hidden = target !== "zai";
     if (target === "site") loadSiteTab();
+    if (target === "zai") {
+      initZaiTab();
+    } else if (zaiPollTimer) {
+      stopZaiPolling();
+    }
   });
 });
 
@@ -1078,6 +1101,175 @@ maintenanceForm.addEventListener("submit", async (event) => {
   } finally {
     maintenanceSave.disabled = false;
   }
+});
+
+/* ---------------- zai tab: Message Z.ai ---------------- */
+
+const ZAI_KEY_STORAGE = "tm-zai-key-v1";
+let zaiKey = sessionStorage.getItem(ZAI_KEY_STORAGE) || "";
+let zaiPollTimer = null;
+
+function zaiEscape(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function zaiViaLabel(m) {
+  if (m.via === "llm") return "auto-reply";
+  if (m.via === "developer") return "direct line";
+  return "";
+}
+
+function renderZaiMessages(messages) {
+  if (!messages.length) {
+    zaiLog.innerHTML =
+      '<p class="muted-note" style="text-align:center; margin: 2rem 1rem">No messages yet — say hi to Z.ai 👋</p>';
+    return;
+  }
+  zaiLog.innerHTML = messages
+    .map((m) => {
+      const mine = m.role === "admin";
+      const via = zaiViaLabel(m);
+      return `
+        <div class="zai-msg ${mine ? "zai-msg-admin" : "zai-msg-zai"}">
+          <div class="zai-bubble">${zaiEscape(m.text).replace(/\n/g, "<br>")}</div>
+          <div class="zai-meta mono">${mine ? "You" : "Z.ai"}${via ? " · " + via : ""} · ${new Date(m.created_at).toLocaleString()}</div>
+        </div>`;
+    })
+    .join("");
+  zaiLog.scrollTop = zaiLog.scrollHeight;
+}
+
+async function loadZaiHistory() {
+  if (!token || !zaiKey) return false;
+  try {
+    const data = await MusicAPI.zaiHistory(token, zaiKey);
+    const messages = data.messages || [];
+    renderZaiMessages(messages);
+    tabZaiCount.textContent = messages.length ? String(messages.length) : "";
+    zaiGate.hidden = true;
+    zaiChat.hidden = false;
+    return true;
+  } catch (error) {
+    if (error.status === 401 || error.status === 501) {
+      sessionStorage.removeItem(ZAI_KEY_STORAGE);
+      zaiKey = "";
+      zaiGate.hidden = false;
+      zaiChat.hidden = true;
+      zaiGateStatus.textContent = error.message || "key rejected";
+    }
+    return false;
+  }
+}
+
+function startZaiPolling() {
+  stopZaiPolling();
+  zaiPollTimer = setInterval(() => {
+    if (!document.hidden) loadZaiHistory();
+  }, 6000);
+}
+
+function stopZaiPolling() {
+  if (zaiPollTimer) {
+    clearInterval(zaiPollTimer);
+    zaiPollTimer = null;
+  }
+}
+
+async function initZaiTab() {
+  zaiGateStatus.textContent = "";
+  try {
+    const cfg = await MusicAPI.zaiConfig();
+    if (!cfg.enabled) {
+      zaiGate.hidden = false;
+      zaiChat.hidden = true;
+      zaiGateStatus.textContent =
+        "Not configured on the server yet — add ZAI_ACCESS_KEY to the Render environment to enable this chat.";
+      return;
+    }
+    zaiMode.textContent = cfg.auto_reply
+      ? `instant auto-reply ON (${cfg.model})`
+      : "instant auto-reply OFF — messages queue for the developer";
+    if (zaiKey) {
+      const ok = await loadZaiHistory();
+      if (ok) startZaiPolling();
+    } else {
+      zaiGate.hidden = false;
+      zaiChat.hidden = true;
+    }
+  } catch (error) {
+    zaiGateStatus.textContent = error.message;
+  }
+}
+
+async function tryZaiUnlock() {
+  const key = zaiKeyInput.value.trim();
+  if (!key) {
+    zaiGateStatus.textContent = "enter the special key first";
+    return;
+  }
+  zaiGateStatus.textContent = "checking…";
+  zaiKey = key;
+  const ok = await loadZaiHistory();
+  if (ok) {
+    sessionStorage.setItem(ZAI_KEY_STORAGE, key);
+    zaiKeyInput.value = "";
+    zaiGateStatus.textContent = "";
+    startZaiPolling();
+  } else if (zaiKey === key) {
+    zaiKey = "";
+    zaiGateStatus.textContent = "wrong special key — try again";
+  }
+}
+
+zaiUnlockBtn.addEventListener("click", tryZaiUnlock);
+zaiKeyInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    tryZaiUnlock();
+  }
+});
+
+zaiForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = zaiText.value.trim();
+  if (!text || !zaiKey) return;
+  zaiText.value = "";
+  zaiSendBtn.disabled = true;
+  zaiSendBtn.textContent = "…";
+  try {
+    const res = await MusicAPI.zaiSend(token, zaiKey, text);
+    if (res.queued && !res.reply) {
+      showToast("Message saved — Z.ai will reply here soon.", "info");
+    }
+    await loadZaiHistory();
+  } catch (error) {
+    zaiText.value = text;
+    showToast(error.message || "could not send the message", "error");
+  } finally {
+    zaiSendBtn.disabled = false;
+    zaiSendBtn.textContent = "Send";
+  }
+});
+
+zaiClearBtn.addEventListener("click", async () => {
+  if (!zaiKey || !confirm("Clear the whole Z.ai conversation?")) return;
+  try {
+    await MusicAPI.zaiClear(token, zaiKey);
+    await loadZaiHistory();
+  } catch (error) {
+    showToast(error.message || "could not clear the chat", "error");
+  }
+});
+
+zaiRelockBtn.addEventListener("click", () => {
+  sessionStorage.removeItem(ZAI_KEY_STORAGE);
+  zaiKey = "";
+  stopZaiPolling();
+  zaiChat.hidden = true;
+  zaiGate.hidden = false;
+  zaiGateStatus.textContent = "locked — paste the special key to unlock again";
 });
 
 /* ---------------- boot ---------------- */

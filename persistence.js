@@ -29,7 +29,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execFileSync, execSync } = require("child_process");
 
 const API = "https://api.github.com";
 const MAGIC = "TMD1";
@@ -154,8 +154,28 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
         { timeout: 120000, maxBuffer: 256 * 1024 * 1024 }
       );
     } catch (e) {
-      status.last_restore = "no snapshot found (first boot?)";
-      return false;
+      // Retry once: a transient GitHub blip must NOT look like "first boot"
+      // — treating it as such would let the initial backup clobber the
+      // branch snapshot with a fresh empty DB.
+      try {
+        execSync("sleep 2", { stdio: "ignore" });
+        out = execFileSync(
+          "curl",
+          [
+            "-sfL",
+            "-H", `Authorization: Bearer ${TOKEN}`,
+            "-H", "Accept: application/vnd.github.raw",
+            `${API}/repos/${REPO}/contents/${BACKUP_PATH}?ref=${encodeURIComponent(BRANCH)}`
+          ],
+          { timeout: 120000, maxBuffer: 256 * 1024 * 1024 }
+        );
+      } catch (e2) {
+        status.last_restore = "snapshot check failed twice — auto-backup blocked this boot";
+        status.last_error = `restore fetch failed: ${e2.message}`;
+        status.restore_failed = true;
+        console.error("[persistence] snapshot fetch failed twice — auto-backup blocked this boot");
+        return false;
+      }
     }
     try {
       const payload = JSON.parse(decrypt(out).toString("utf8"));
@@ -303,8 +323,14 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
     process.on("SIGTERM", () => flush("SIGTERM"));
     process.on("SIGINT", () => flush("SIGINT"));
 
-    // initial snapshot (creates the branch + first backup)
-    setTimeout(() => backup("initial").then((ok) => { dirty = !ok; lastFingerprint = fingerprint(); }), 5000);
+    // initial snapshot — ONLY when this boot has something new to say:
+    // a failed restore (restore_failed) or an actual local write (dirty).
+    // Unconditionally pushing here made every boot overwrite the branch
+    // snapshot with whatever the local DB held, empty or not.
+    setTimeout(() => {
+      if (status.snapshot_existed && !dirty) return; // restored from the branch — nothing new to push
+      backup("initial").then((ok) => { if (!ok) dirty = true; lastFingerprint = fingerprint(); });
+    }, 5000);
   }
 
   return { status, restore, backup, markDirty, start, fingerprint };

@@ -252,7 +252,10 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
 
   /* ---------- scheduling ---------- */
 
-  let dirty = true; // first boot: push an initial snapshot so the branch exists
+  // dirty starts FALSE: a fresh/restored boot must never push by itself.
+  // (dirty=true here caused every deploy's SIGTERM flush to overwrite the
+  // branch snapshot with the just-booted DB — clobbering good snapshots.)
+  let dirty = false;
   let debounceTimer = null;
 
   function markDirty() {
@@ -279,10 +282,13 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
   function start() {
     if (!enabled) return;
 
-    // periodic sweep: catches anything the debounce missed
+    // periodic sweep: catches anything the debounce missed.
+    // Only pushes when dirty — never just because the DB file's
+    // mtime fingerprint drifted (sqlite touches it on reads too).
     const sweep = setInterval(() => {
+      if (!dirty) return;
       const fp = fingerprint();
-      if (dirty || fp !== lastFingerprint) backup("periodic").then((ok) => { if (ok) { dirty = false; lastFingerprint = fp; } });
+      backup("periodic").then((ok) => { if (ok) { dirty = false; lastFingerprint = fp; } });
     }, 3 * 60 * 1000);
     if (sweep.unref) sweep.unref();
 

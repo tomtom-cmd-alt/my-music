@@ -65,8 +65,10 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
     return Buffer.concat([Buffer.from(MAGIC), iv, tag, enc]).toString("base64");
   }
 
-  function decrypt(b64) {
-    const raw = Buffer.from(String(b64), "base64");
+  function decrypt(input) {
+    // Accepts raw bytes (fetched with Accept: application/vnd.github.raw)
+    // or the base64 string from the Contents API JSON (small files only).
+    const raw = Buffer.isBuffer(input) ? input : Buffer.from(String(input), "base64");
     if (raw.slice(0, 4).toString() !== MAGIC) throw new Error("snapshot has wrong format");
     const decipher = crypto.createDecipheriv("aes-256-gcm", key, raw.slice(4, 16));
     decipher.setAuthTag(raw.slice(16, 32));
@@ -138,23 +140,25 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
     }
     let out;
     try {
+      // Accept: application/vnd.github.raw returns the raw blob for ANY size.
+      // (The JSON variant returns content:"" for files over 1 MB, which
+      // silently broke restore once uploads pushed the snapshot past 1 MB.)
       out = execFileSync(
         "curl",
         [
           "-sfL",
           "-H", `Authorization: Bearer ${TOKEN}`,
-          "-H", "Accept: application/vnd.github+json",
+          "-H", "Accept: application/vnd.github.raw",
           `${API}/repos/${REPO}/contents/${BACKUP_PATH}?ref=${encodeURIComponent(BRANCH)}`
         ],
-        { timeout: 60000, maxBuffer: 128 * 1024 * 1024 }
+        { timeout: 120000, maxBuffer: 256 * 1024 * 1024 }
       );
     } catch (e) {
       status.last_restore = "no snapshot found (first boot?)";
       return false;
     }
     try {
-      const json = JSON.parse(out.toString("utf8"));
-      const payload = JSON.parse(decrypt(json.content).toString("utf8"));
+      const payload = JSON.parse(decrypt(out).toString("utf8"));
       if (!payload || typeof payload.files !== "object") throw new Error("bad snapshot payload");
       for (const [rel, b64] of Object.entries(payload.files)) {
         let abs;
@@ -167,10 +171,14 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
         fs.writeFileSync(abs, Buffer.from(b64, "base64"));
       }
       status.last_restore = `restored snapshot from ${payload.created_at} (${Object.keys(payload.files).length} files)`;
+      status.snapshot_existed = true;
       return true;
     } catch (e) {
       status.last_restore = null;
       status.last_error = `restore failed: ${e.message}`;
+      status.restore_failed = true;
+      console.error("[persistence] RESTORE FAILED:", e.message);
+      console.error("[persistence] auto-backup is DISABLED this boot to protect the snapshot on the branch");
       return false;
     }
   }
@@ -199,6 +207,10 @@ function createPersistence({ DB_PATH, UPLOAD_DIR, ROOT_DIR }) {
 
   async function backup(reason = "manual") {
     if (!enabled) return false;
+    // If a boot failed to restore an EXISTING snapshot, the local DB is
+    // fresh/empty — never let auto-backups overwrite the good snapshot
+    // on the branch with it. Only an explicit manual backup may proceed.
+    if (status.restore_failed && reason !== "manual") return false;
     if (status.backing_up) return false;
     status.backing_up = true;
     try {

@@ -630,10 +630,10 @@ app.get("/api/health", (_req, res) => {
     profiles: true,
     friends: true,
     dms: true,
-    version: 5,
+    version: 6,
     github: GITHUB_ENABLED,
     password_login: !PASSWORD_DISABLED,
-    persistence: { enabled: persistence.status.enabled, last_backup: persistence.status.last_backup, last_restore: persistence.status.last_restore, last_error: persistence.status.last_error },
+    persistence: { enabled: persistence.status.enabled, last_backup: persistence.status.last_backup, last_restore: persistence.status.last_restore, last_error: persistence.status.last_error, restore_failed: Boolean(persistence.status.restore_failed) },
     maintenance: readMaintenance()
   });
 });
